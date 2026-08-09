@@ -4,12 +4,15 @@ import mowData from "./assets/mow-data.json";
 import { intToRank } from "./rank/rank.mapper";
 import { rankIconUrl } from "./rank/rank-icon";
 import { rarityIconUrl } from "./rarity/rarity-icon";
+import { RarityMapper } from "./rarity/rarity.mapper";
 import { starIconUrls } from "./rarity/rarity-stars-icon";
 import { ProgressionIndexMapper } from "./progression/progression-index";
 import { characterPortraitUrl } from "./characters/character-portraits";
 import { getCharacterProfile } from "./characters/character-profile";
 import { damageProfileIconUrl } from "./characters/damage-profile-icon";
 import { traitIconUrl } from "./characters/trait-icon";
+import { factionIconUrl } from "./factions/faction-icon";
+import { rangedAttackIconUrl } from "./board/ranged-attack-icon";
 
 const characterIds = new Set((characterData as { id: string }[]).map((c) => c.id));
 const mowIds = new Set((mowData as { mows: { snowprintId: string }[] }).mows.map((m) => m.snowprintId));
@@ -36,6 +39,7 @@ interface ExpeditionBoardEntry {
   baseRewards: string[];
   bonusRewards: string[];
   status: string;
+  units?: string[];
 }
 
 // Roster arrays populated after each successful fetch; available for future phases.
@@ -104,10 +108,12 @@ function renderCharacters(container: HTMLElement, heroes: any[]): void {
         .filter((url): url is string => url !== undefined)
         .map((url) => `<img class="icon" src="${url}">`)
         .join("");
+      const factionIcon = factionIconUrl(characterProfile.faction);
 
       return `<tr>
         <td>${hero.id}</td>
         <td><img class="icon" src="${characterPortraitUrl(hero.id)}"></td>
+        <td>${factionIcon ? `<img class="icon" src="${factionIcon}">` : characterProfile.faction}</td>
         <td><img class="icon" src="${rarityIconUrl(rarity)}"></td>
         <td><span class="icon-row">${starIcons}</span></td>
         <td><img class="icon" src="${rankIconUrl(rank)}"></td>
@@ -119,10 +125,41 @@ function renderCharacters(container: HTMLElement, heroes: any[]): void {
 
   container.innerHTML = `<table>
     <thead>
-      <tr><th>Character ID</th><th>Portrait</th><th>Rarity</th><th>Stars</th><th>Rank</th><th>Damage Profile</th><th>Traits</th></tr>
+      <tr><th>Character ID</th><th>Portrait</th><th>Faction</th><th>Rarity</th><th>Stars</th><th>Rank</th><th>Damage Profile</th><th>Traits</th></tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function bonusObjectiveIconUrl(objective: BonusObjective): string | undefined {
+  if (!objective.objectiveTarget) {
+    return undefined;
+  }
+  switch (objective.objectiveType) {
+    case "Trait":
+      return traitIconUrl(objective.objectiveTarget);
+    case "DamageType":
+      return damageProfileIconUrl(objective.objectiveTarget);
+    case "Faction":
+      return factionIconUrl(objective.objectiveTarget);
+    default:
+      return undefined;
+  }
+}
+
+function renderStatus(entry: ExpeditionBoardEntry): string {
+  if (entry.status !== "Dispatched" || !entry.units || entry.units.length === 0) {
+    return entry.status;
+  }
+
+  const unitIcons = entry.units
+    .map((unitId) =>
+      characterIds.has(unitId)
+        ? `<img class="icon" src="${characterPortraitUrl(unitId)}" title="${unitId}">`
+        : `<span>${unitId}</span>`,
+    )
+    .join("");
+  return `<span class="icon-row">${unitIcons}</span>`;
 }
 
 function renderBoard(board: ExpeditionBoardEntry[]): void {
@@ -136,15 +173,30 @@ function renderBoard(board: ExpeditionBoardEntry[]): void {
   const rows = board
     .map((entry) => {
       const objectives = entry.bonusObjectives
-        .map((o) => (o.objectiveTarget ? `${o.objectiveType}: ${o.objectiveTarget}` : o.objectiveType))
-        .join(", ");
+        .map((o) => {
+          const label = o.objectiveTarget ? `${o.objectiveType}: ${o.objectiveTarget}` : o.objectiveType;
+          if (o.objectiveType === "HasNoRangedAttack") {
+            return `<span class="icon-badge" title="${label}">
+              <img class="icon" src="${rangedAttackIconUrl()}">
+              <span class="icon-badge-overlay">✕</span>
+            </span>`;
+          }
+          const iconUrl = bonusObjectiveIconUrl(o);
+          return iconUrl ? `<img class="icon" src="${iconUrl}" title="${label}">` : `<span>${label}</span>`;
+        })
+        .join("");
+      const rarity = RarityMapper.stringToRarity(entry.rarity);
+      if (rarity === undefined) {
+        throw new Error(`Unknown board rarity: ${entry.rarity}`);
+      }
+
       return `<tr>
         <td>${entry.category}</td>
-        <td>${entry.rarity}</td>
-        <td>${objectives}</td>
+        <td><img class="icon" src="${rarityIconUrl(rarity)}"></td>
+        <td><span class="icon-row">${objectives}</span></td>
         <td>${(entry.baseRewards ?? []).join(", ")}</td>
         <td>${(entry.bonusRewards ?? []).join(", ")}</td>
-        <td>${entry.status}</td>
+        <td>${renderStatus(entry)}</td>
       </tr>`;
     })
     .join("");
