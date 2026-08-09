@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import characterData from "./assets/character-data.json";
 import mowData from "./assets/mow-data.json";
+import { intToRank } from "./rank/rank.mapper";
+import { rankIconUrl } from "./rank/rank-icon";
+import { rarityIconUrl } from "./rarity/rarity-icon";
+import { starIconUrls } from "./rarity/rarity-stars-icon";
+import { ProgressionIndexMapper } from "./progression/progression-index";
+import { characterPortraitUrl } from "./characters/character-portraits";
+import { getCharacterProfile } from "./characters/character-profile";
+import { damageProfileIconUrl } from "./characters/damage-profile-icon";
+import { traitIconUrl } from "./characters/trait-icon";
 
 const characterIds = new Set((characterData as { id: string }[]).map((c) => c.id));
 const mowIds = new Set((mowData as { mows: { snowprintId: string }[] }).mows.map((m) => m.snowprintId));
@@ -71,6 +80,51 @@ function renderGenericList(container: HTMLElement, items: any[], emptyMsg: strin
   </table>`;
 }
 
+function renderCharacters(container: HTMLElement, heroes: any[]): void {
+  if (heroes.length === 0) {
+    container.textContent = "No characters found.";
+    return;
+  }
+
+  const rows = heroes
+    .map((hero) => {
+      const rank = intToRank(hero.rank);
+      const rarity = ProgressionIndexMapper.toRarity(hero.progressionIndex);
+      const stars = ProgressionIndexMapper.toStars(hero.progressionIndex);
+      const starIcons = starIconUrls(stars)
+        .map((url) => `<img class="icon" src="${url}">`)
+        .join("");
+      const characterProfile = getCharacterProfile(hero.id);
+      const damageProfileIcons = characterProfile.damageProfiles
+        .map((profile) => `<img class="icon" src="${damageProfileIconUrl(profile)}">`)
+        .join("");
+      const traitIcons = characterProfile.traits
+        .filter((trait) => trait !== "Hero")
+        .map((trait) => traitIconUrl(trait))
+        .filter((url): url is string => url !== undefined)
+        .map((url) => `<img class="icon" src="${url}">`)
+        .join("");
+
+      return `<tr>
+        <td>${hero.id}</td>
+        <td><img class="icon" src="${characterPortraitUrl(hero.id)}"></td>
+        <td><img class="icon" src="${rarityIconUrl(rarity)}"></td>
+        <td><span class="icon-row">${starIcons}</span></td>
+        <td><img class="icon" src="${rankIconUrl(rank)}"></td>
+        <td><span class="icon-row">${damageProfileIcons}</span></td>
+        <td><span class="icon-row">${traitIcons}</span></td>
+      </tr>`;
+    })
+    .join("");
+
+  container.innerHTML = `<table>
+    <thead>
+      <tr><th>Character ID</th><th>Portrait</th><th>Rarity</th><th>Stars</th><th>Rank</th><th>Damage Profile</th><th>Traits</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
 function renderBoard(board: ExpeditionBoardEntry[]): void {
   if (!boardEl) return;
 
@@ -129,7 +183,7 @@ async function go(): Promise<void> {
 
     setStatus(`Loaded ${board.length} expedition(s), ${heroes.length} hero(es), ${machinesOfWar.length} machine(s) of war.`);
     renderBoard(board);
-    if (charactersEl) renderGenericList(charactersEl, heroes, "No characters found.");
+    if (charactersEl) renderCharacters(charactersEl, heroes);
     if (mowEl) renderGenericList(mowEl, machinesOfWar, "No machines of war found.");
   } catch (error) {
     setStatus(`Failed: ${error}`);

@@ -112,6 +112,18 @@ td {
   vertical-align: top;
 }
 
+img.icon {
+  height: 30px;
+  width: auto;
+  display: block;
+}
+
+.icon-row {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
