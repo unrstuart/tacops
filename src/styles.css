@@ -55,7 +55,45 @@ button:disabled {
   opacity: 0.6;
 }
 
-#board-output {
+.tabs {
+  display: flex;
+  gap: 0.25em;
+  margin-top: 1em;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.12);
+  width: 100%;
+}
+
+.tab-btn {
+  border-radius: 6px 6px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  margin-bottom: -2px;
+}
+
+.tab-btn.active {
+  opacity: 1;
+  border-color: rgba(0, 0, 0, 0.12);
+  border-bottom-color: #f6f6f6;
+  background-color: #f6f6f6;
+}
+
+.tab-panel {
+  width: 100%;
+  overflow-x: auto;
+  padding-top: 0.5em;
+}
+
+.tab-panel.hidden {
+  display: none;
+}
+
+#board-output,
+#characters-output,
+#mow-output {
   width: 100%;
   overflow-x: auto;
 }
@@ -86,6 +124,16 @@ td {
   }
   button:active {
     background-color: #0f0f0f69;
+  }
+
+  .tab-btn.active {
+    border-color: rgba(255, 255, 255, 0.15);
+    border-bottom-color: #2f2f2f;
+    background-color: #2f2f2f;
+  }
+
+  .tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.15);
   }
 
   th,

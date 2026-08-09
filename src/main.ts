@@ -1,4 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
+import characterData from "./assets/character-data.json";
+import mowData from "./assets/mow-data.json";
+
+const characterIds = new Set((characterData as { id: string }[]).map((c) => c.id));
+const mowIds = new Set((mowData as { mows: { snowprintId: string }[] }).mows.map((m) => m.snowprintId));
 
 interface Credentials {
   userId: string;
@@ -30,42 +35,40 @@ export let machinesOfWar: any[] = [];
 
 let statusEl: HTMLElement | null;
 let boardEl: HTMLElement | null;
+let charactersEl: HTMLElement | null;
+let mowEl: HTMLElement | null;
 let goButton: HTMLButtonElement | null;
-
-/**
- * Walks the response tree and returns the first array whose items contain
- * both a property with value `markerValue` and a property named `siblingKey`.
- */
-function findArrayWith(root: unknown, markerValue: string, siblingKey: string): any[] | null {
-  function walk(node: unknown): any[] | null {
-    if (Array.isArray(node)) {
-      const hit = node.find(
-        (item) =>
-          item !== null &&
-          typeof item === "object" &&
-          Object.values(item as object).includes(markerValue) &&
-          siblingKey in (item as object),
-      );
-      if (hit !== undefined) return node;
-      for (const item of node) {
-        const found = walk(item);
-        if (found) return found;
-      }
-      return null;
-    }
-    if (node !== null && typeof node === "object") {
-      for (const v of Object.values(node as object)) {
-        const found = walk(v);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-  return walk(root);
-}
 
 function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
+}
+
+/** Renders any flat-ish array as a table; nested objects are shown as JSON. */
+function renderGenericList(container: HTMLElement, items: any[], emptyMsg: string): void {
+  if (items.length === 0) {
+    container.textContent = emptyMsg;
+    return;
+  }
+  const keySet = new Set<string>();
+  for (const item of items) {
+    if (item && typeof item === "object") {
+      for (const k of Object.keys(item as object)) keySet.add(k);
+    }
+  }
+  const keys = ["id", ...Array.from(keySet).filter((k) => k !== "id")];
+  const fmt = (v: unknown) =>
+    v === null || v === undefined
+      ? ""
+      : typeof v === "object"
+        ? JSON.stringify(v)
+        : String(v);
+  const rows = items
+    .map((item) => `<tr>${keys.map((k) => `<td>${fmt(item[k])}</td>`).join("")}</tr>`)
+    .join("");
+  container.innerHTML = `<table>
+    <thead><tr>${keys.map((k) => `<th>${k}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function renderBoard(board: ExpeditionBoardEntry[]): void {
@@ -119,11 +122,15 @@ async function go(): Promise<void> {
       return;
     }
 
-    heroes = findArrayWith(response, "worldKharn", "progressionIndex") ?? [];
-    machinesOfWar = findArrayWith(response, "blackForgefiend", "primaryAbilityLevel") ?? [];
+    const hero = response?.eventResult?.eventResponseData?.player?.hero;
+    const units: any[] = Object.entries(hero?.units?.units ?? {}).map(([id, data]) => ({ id, ...(data as object) }));
+    heroes = units.filter((u) => characterIds.has(u.id));
+    machinesOfWar = units.filter((u) => mowIds.has(u.id));
 
     setStatus(`Loaded ${board.length} expedition(s), ${heroes.length} hero(es), ${machinesOfWar.length} machine(s) of war.`);
     renderBoard(board);
+    if (charactersEl) renderGenericList(charactersEl, heroes, "No characters found.");
+    if (mowEl) renderGenericList(mowEl, machinesOfWar, "No machines of war found.");
   } catch (error) {
     setStatus(`Failed: ${error}`);
   } finally {
@@ -134,6 +141,17 @@ async function go(): Promise<void> {
 window.addEventListener("DOMContentLoaded", () => {
   statusEl = document.querySelector("#status-msg");
   boardEl = document.querySelector("#board-output");
+  charactersEl = document.querySelector("#characters-output");
+  mowEl = document.querySelector("#mow-output");
   goButton = document.querySelector("#go-button");
   goButton?.addEventListener("click", go);
+
+  document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+      btn.classList.add("active");
+      document.getElementById(`tab-${btn.dataset.tab}`)?.classList.remove("hidden");
+    });
+  });
 });
