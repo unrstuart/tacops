@@ -13,6 +13,20 @@ import { requiredAlliance } from "./board-alliance";
 import { isCharacterId } from "../api/fetch-player-data";
 import type { BonusObjective, ExpeditionBoardEntry } from "../api/types";
 
+// "Dispatched" is mid-run; "Completed" means the op finished but its reward hasn't been claimed
+// yet - the squad hasn't returned in either case, so both are untouchable/undeployable.
+const UNAVAILABLE_STATUSES = new Set(["Dispatched", "Completed"]);
+
+export function entryIsUnavailable(entry: ExpeditionBoardEntry): boolean {
+  return UNAVAILABLE_STATUSES.has(entry.status);
+}
+
+export function entryStatusLabel(entry: ExpeditionBoardEntry): "Ready" | "Dispatched" | "Complete" {
+  if (entry.status === "Dispatched") return "Dispatched";
+  if (entry.status === "Completed") return "Complete";
+  return "Ready";
+}
+
 export function entryRarity(entry: ExpeditionBoardEntry): Rarity {
   const rarity = RarityMapper.stringToRarity(entry.rarity);
   if (rarity === undefined) {
@@ -90,7 +104,7 @@ export interface DispatchedUnit {
 }
 
 export function getDispatchedUnits(entry: ExpeditionBoardEntry): DispatchedUnit[] | undefined {
-  if (entry.status !== "Dispatched" || !entry.units || entry.units.length === 0) {
+  if (!entryIsUnavailable(entry) || !entry.units || entry.units.length === 0) {
     return undefined;
   }
   return entry.units.map((unitId) => ({

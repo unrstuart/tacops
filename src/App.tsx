@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { EnvironmentToggle } from "./components/EnvironmentToggle";
+import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
 import { Tabs } from "./components/Tabs";
 import { OperationsTable } from "./components/OperationsTable";
+import { OperationsCards } from "./components/OperationsCards";
 import { CharactersTable } from "./components/CharactersTable";
 import { GenericTable } from "./components/GenericTable";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
-import { SuggestedAssignmentTable } from "./components/SuggestedAssignmentTable";
 import { fetchPlayerData } from "./api/fetch-player-data";
 import { solveBoardAssignment, type BoardAssignmentResult } from "./board/board-solver";
 import type { ResourceKey } from "./board/reward-amount";
@@ -21,6 +22,7 @@ const TABS = [
 export function App() {
   const [environment, setEnvironment] = useState<Environment>("prod");
   const [activeTab, setActiveTab] = useState(TABS[0].id);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [board, setBoard] = useState<ExpeditionBoardEntry[]>([]);
@@ -64,11 +66,12 @@ export function App() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full min-w-[900px] flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
+    <main className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
       <h1 className="text-2xl font-semibold">TacOps</h1>
       <p>Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board.</p>
 
       <EnvironmentToggle value={environment} onChange={setEnvironment} />
+      <ViewModeToggle value={viewMode} onChange={setViewMode} />
 
       <button
         type="button"
@@ -85,7 +88,6 @@ export function App() {
       <div className="w-full overflow-x-auto pt-2">
         {activeTab === "operations" && (
           <>
-            <OperationsTable board={board} />
             {board.length > 0 && (
               <>
                 <RewardPriorityPicker value={priorityOrder} onChange={setPriorityOrder} />
@@ -95,8 +97,12 @@ export function App() {
                   </p>
                 )}
                 <RequiredCharacterPool assignment={assignment} />
-                <SuggestedAssignmentTable board={board} assignment={assignment} />
               </>
+            )}
+            {viewMode === "table" ? (
+              <OperationsTable board={board} assignment={assignment} />
+            ) : (
+              <OperationsCards board={board} assignment={assignment} />
             )}
           </>
         )}

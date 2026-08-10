@@ -4,7 +4,7 @@ import { characterSatisfiesObjective } from "./objective-eligibility";
 import { rewardAmount, type ResourceKey } from "./reward-amount";
 import { estimateXpGain } from "./xp-gain";
 import { requiredAlliance } from "./board-alliance";
-import { entryRarity } from "./board-view-model";
+import { entryRarity, entryIsUnavailable } from "./board-view-model";
 import { intToRank } from "../rank/rank.mapper";
 import { Rank } from "../rank/rank.enum";
 import type { Rarity } from "../rarity/rarity.enum";
@@ -29,10 +29,10 @@ export interface BoardSolution {
 
 export type BoardAssignmentResult = Map<string, BoardSolution>;
 
-function dispatchedCharacterIds(board: ExpeditionBoardEntry[]): Set<string> {
+function committedCharacterIds(board: ExpeditionBoardEntry[]): Set<string> {
   const ids = new Set<string>();
   for (const entry of board) {
-    if (entry.status !== "Dispatched") continue;
+    if (!entryIsUnavailable(entry)) continue;
     for (const unitId of entry.units ?? []) {
       if (isCharacterId(unitId)) {
         ids.add(unitId);
@@ -272,12 +272,12 @@ export function solveBoardAssignment(
   heroes: RawUnit[],
   priorityOrder: [ResourceKey, ResourceKey, ResourceKey],
 ): BoardAssignmentResult {
-  const openBoards = board.filter((entry) => entry.status !== "Dispatched");
+  const openBoards = board.filter((entry) => !entryIsUnavailable(entry));
   if (openBoards.length === 0) {
     return new Map();
   }
 
-  const roster = buildRoster(heroes, dispatchedCharacterIds(board));
+  const roster = buildRoster(heroes, committedCharacterIds(board));
   const built = buildModel(openBoards, roster, priorityOrder);
   const finalResult = runPasses(built.model);
   return extractSolution(
