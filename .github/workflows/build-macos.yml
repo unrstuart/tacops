@@ -1,13 +1,19 @@
-name: Build Windows
+name: Build macOS
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build-macos:
     permissions:
       contents: write
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - args: '--target aarch64-apple-darwin'
+          - args: '--target x86_64-apple-darwin'
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -19,6 +25,8 @@ jobs:
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -37,3 +45,4 @@ jobs:
           releaseBody: 'Automated build.'
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.args }}

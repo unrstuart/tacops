@@ -1,6 +1,8 @@
 # TacOps
 
-Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board.
+Reads your local Tacticus credentials, fetches your live account data, shows your current
+operations board and uses an integer-programming solver to suggest ways to dispatch the rest of
+your operations.
 
 ## Tech specs
 
@@ -21,7 +23,9 @@ React/TypeScript frontend (`src/`), running in the OS's native webview.
   the handful of request fields (`environmentId`, `bundleId`, `jenkinsBuildBranchInfo`,
   `builtInMultiConfigVersion`) that differ between them. Device/hardware fingerprint fields are
   intentionally left as generic fake values on both environments.
-- Currently **macOS-only** — credential auto-discovery isn't implemented for other platforms yet.
+- **macOS and Windows** — credential auto-discovery is implemented for both. Windows only covers
+  the prod environment for now; QA's credential path on Windows isn't confirmed yet (see
+  [Credentials](#credentials) below). Other platforms (e.g. Linux) aren't implemented.
 
 ### Frontend (`src/`)
 
@@ -51,18 +55,37 @@ npm run tauri build   # produce a release build/installer
 `tsc`/build verification) — they don't start the Tauri window or backend commands, so `find_credentials`
 and `fetch_player_data` won't be available; use the `tauri` scripts above to run the full app.
 
+### Building for distribution
+
+`npm run tauri build` produces a native installer for whatever OS you run it on — e.g. on macOS
+that's `src-tauri/target/release/bundle/macos/tacops.app` and a `.dmg`; on Windows it's a `.msi`
+and an NSIS `.exe` under the equivalent `bundle/` folders. It only builds for the host you're
+running it on — Tauri doesn't support cross-compiling to another OS without extra toolchains, and
+that path is fragile enough that it isn't set up here.
+
+To get a build for the *other* OS without owning that hardware, use the GitHub Actions workflows
+instead: [`.github/workflows/build-macos.yml`](.github/workflows/build-macos.yml) and
+[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml). Both are triggered
+manually (Actions tab → pick the workflow → "Run workflow") and build natively on GitHub-hosted
+runners — macOS builds both `aarch64` and `x86_64` as separate installers, Windows builds the
+native MSI/NSIS installers. Both attach their output to the same **draft** GitHub Release (tag
+`app-v<version>`), so running either (or both) leaves you with one release page holding whichever
+installers you've built — nothing is published publicly until you choose to publish that draft.
+
 ### Credentials
 
 TacOps doesn't manage login — it reads the credentials the actual Tacticus game client already
-wrote to disk. Which file it reads depends on the Prod/QA toggle in the app:
+wrote to disk. Which file it reads depends on the OS and the Prod/QA toggle in the app:
 
-| Environment | Path | API domain |
-|---|---|---|
-| Prod | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
-| QA | `~/Library/Application Support/com.snowprintstudios.loki.qa/staging-loki_user_data.json` | `api-staging.loki.snowprintstudios.com` |
+| OS | Environment | Path | API domain |
+|---|---|---|---|
+| macOS | Prod | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
+| macOS | QA | `~/Library/Application Support/com.snowprintstudios.loki.qa/staging-loki_user_data.json` | `api-staging.loki.snowprintstudios.com` |
+| Windows | Prod | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
+| Windows | QA | not implemented — the QA client likely uses a different Unity product-name folder, unconfirmed | `api-staging.loki.snowprintstudios.com` |
 
-Both files need at least `userId` and `clientSecret`; `snowId` is used when present (the prod file
-has it, the QA file typically doesn't).
+All files need at least `userId` and `clientSecret`; `snowId` is used when present (the prod files
+have it, the QA file typically doesn't).
 
 ## Style requirements
 
