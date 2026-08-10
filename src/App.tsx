@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { EnvironmentToggle } from "./components/EnvironmentToggle";
 import { Tabs } from "./components/Tabs";
 import { OperationsTable } from "./components/OperationsTable";
 import { CharactersTable } from "./components/CharactersTable";
 import { GenericTable } from "./components/GenericTable";
+import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
+import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
+import { SuggestedAssignmentTable } from "./components/SuggestedAssignmentTable";
 import { fetchPlayerData } from "./api/fetch-player-data";
+import { solveBoardAssignment, type BoardAssignmentResult } from "./board/board-solver";
+import type { ResourceKey } from "./board/reward-amount";
 import type { Environment, ExpeditionBoardEntry, RawUnit } from "./api/types";
 
 const TABS = [
@@ -21,6 +26,22 @@ export function App() {
   const [board, setBoard] = useState<ExpeditionBoardEntry[]>([]);
   const [heroes, setHeroes] = useState<RawUnit[]>([]);
   const [machinesOfWar, setMachinesOfWar] = useState<RawUnit[]>([]);
+  const [priorityOrder, setPriorityOrder] = useState<[ResourceKey, ResourceKey, ResourceKey]>([
+    "crusadeBomb",
+    "intel",
+    "crusadeNpc",
+  ]);
+
+  const { assignment, solverError } = useMemo((): { assignment: BoardAssignmentResult; solverError?: string } => {
+    if (board.length === 0 || heroes.length === 0) {
+      return { assignment: new Map() };
+    }
+    try {
+      return { assignment: solveBoardAssignment(board, heroes, priorityOrder) };
+    } catch (error) {
+      return { assignment: new Map(), solverError: `${error}` };
+    }
+  }, [board, heroes, priorityOrder]);
 
   async function go() {
     setLoading(true);
@@ -62,7 +83,23 @@ export function App() {
       <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
       <div className="w-full overflow-x-auto pt-2">
-        {activeTab === "operations" && <OperationsTable board={board} />}
+        {activeTab === "operations" && (
+          <>
+            <OperationsTable board={board} />
+            {board.length > 0 && (
+              <>
+                <RewardPriorityPicker value={priorityOrder} onChange={setPriorityOrder} />
+                {solverError && (
+                  <p className="mt-2 text-red-600 dark:text-red-400">
+                    Couldn't compute a suggested assignment: {solverError}
+                  </p>
+                )}
+                <RequiredCharacterPool assignment={assignment} />
+                <SuggestedAssignmentTable board={board} assignment={assignment} />
+              </>
+            )}
+          </>
+        )}
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}
         {activeTab === "mows" && <GenericTable items={machinesOfWar} emptyMessage="No machines of war found." />}
       </div>

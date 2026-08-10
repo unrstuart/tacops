@@ -21,6 +21,15 @@ export class RarityMapper {
     [Rarity.Mythic]: RarityStars.MythicWings,
   };
 
+  public static xpLevelCap: Record<Rarity, number> = {
+    [Rarity.Common]: 8,
+    [Rarity.Uncommon]: 17,
+    [Rarity.Rare]: 26,
+    [Rarity.Epic]: 35,
+    [Rarity.Legendary]: 50,
+    [Rarity.Mythic]: 60,
+  };
+
   public static toMaxRank: Record<Rarity, Rank> = {
     [Rarity.Common]: Rank.Iron1,
     [Rarity.Uncommon]: Rank.Bronze1,

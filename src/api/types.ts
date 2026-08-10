@@ -29,4 +29,5 @@ export type RawUnit = {
   id: string;
   rank?: number;
   progressionIndex?: number;
+  xpLevel?: number;
 } & Record<string, unknown>;

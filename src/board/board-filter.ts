@@ -14,6 +14,10 @@ const BOARD_MIN_RANK: Partial<Record<Rarity, Rank>> = {
   [Rarity.Mythic]: Rank.Diamond3,
 };
 
+export function boardMinRank(boardRarity: Rarity): Rank | undefined {
+  return BOARD_MIN_RANK[boardRarity];
+}
+
 export class BoardFilter {
   public static byRank<T extends RankedUnit>(units: T[], boardRarity: Rarity): T[] {
     const minRank = BOARD_MIN_RANK[boardRarity];
