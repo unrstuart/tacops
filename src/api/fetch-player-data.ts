@@ -20,12 +20,11 @@ export async function fetchPlayerData(environment: Environment): Promise<PlayerD
   const credentials = await invoke<Credentials>("find_credentials", { environment });
   const response = await invoke<any>("fetch_player_data", { environment, ...credentials });
 
-  const board: ExpeditionBoardEntry[] | undefined =
-    response?.eventResult?.eventResponseData?.player?.hero?.progress?.expeditions?.board;
-
-  if (!board) {
-    throw new Error("Fetched player data, but couldn't find an expeditions board in the response.");
-  }
+  // The API omits the board entirely (rather than sending an empty array) when a player has no
+  // expeditions queued and none in progress - e.g. right after claiming everything, before the
+  // board refreshes with new offers. That's a legitimate state, not a fetch failure.
+  const board: ExpeditionBoardEntry[] =
+    response?.eventResult?.eventResponseData?.player?.hero?.progress?.expeditions?.board ?? [];
 
   const hero = response?.eventResult?.eventResponseData?.player?.hero;
   const units: RawUnit[] = Object.entries(hero?.units?.units ?? {}).map(([id, data]) => ({

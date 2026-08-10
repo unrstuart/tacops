@@ -53,7 +53,9 @@ export function App() {
       setStatus("Fetching player data...");
       const data = await fetchPlayerData(environment);
       setStatus(
-        `Loaded ${data.board.length} expedition(s), ${data.heroes.length} hero(es), ${data.machinesOfWar.length} machine(s) of war.`,
+        data.board.length === 0
+          ? "Couldn't find any expeditions. Have you refreshed your board after claiming your completed operations?"
+          : `Loaded ${data.board.length} expedition(s), ${data.heroes.length} hero(es), ${data.machinesOfWar.length} machine(s) of war.`,
       );
       setBoard(data.board);
       setHeroes(data.heroes);
