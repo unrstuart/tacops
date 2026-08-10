@@ -5,7 +5,7 @@ import { Tabs } from "./components/Tabs";
 import { OperationsTable } from "./components/OperationsTable";
 import { OperationsCards } from "./components/OperationsCards";
 import { CharactersTable } from "./components/CharactersTable";
-import { GenericTable } from "./components/GenericTable";
+import { MowTable } from "./components/MowTable";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { fetchPlayerData } from "./api/fetch-player-data";
@@ -109,7 +109,7 @@ export function App() {
           </>
         )}
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}
-        {activeTab === "mows" && <GenericTable items={machinesOfWar} emptyMessage="No machines of war found." />}
+        {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
       </div>
     </main>
   );

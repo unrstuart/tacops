@@ -1,32 +1,31 @@
 import { Icon } from "./Icon";
 import { IconRow } from "./IconRow";
-import { getCharacterRow } from "../characters/character-view-model";
+import { getMowRow } from "../mow/mow-view-model";
 import type { RawUnit } from "../api/types";
 
 const cellClass = "border-b border-black/10 px-3 py-2 align-top dark:border-white/15";
 
-export function CharactersTable({ heroes }: { heroes: RawUnit[] }) {
-  if (heroes.length === 0) {
-    return <p>No characters found.</p>;
+export function MowTable({ machinesOfWar }: { machinesOfWar: RawUnit[] }) {
+  if (machinesOfWar.length === 0) {
+    return <p>No machines of war found.</p>;
   }
 
   return (
     <table className="mt-4 w-full table-auto border-collapse text-left">
       <thead>
         <tr>
-          <th className={cellClass}>Character</th>
+          <th className={cellClass}>Machine of War</th>
           <th className={cellClass}>Portrait</th>
           <th className={cellClass}>Faction</th>
           <th className={cellClass}>Rarity</th>
           <th className={cellClass}>Stars</th>
-          <th className={cellClass}>Rank</th>
-          <th className={cellClass}>Damage Profile</th>
-          <th className={cellClass}>Traits</th>
+          <th className={cellClass}>Active</th>
+          <th className={cellClass}>Passive</th>
         </tr>
       </thead>
       <tbody>
-        {heroes.map((hero) => {
-          const row = getCharacterRow(hero);
+        {machinesOfWar.map((mow) => {
+          const row = getMowRow(mow);
           return (
             <tr key={row.id}>
               <td className={cellClass}>{row.name}</td>
@@ -44,23 +43,8 @@ export function CharactersTable({ heroes }: { heroes: RawUnit[] }) {
                   ))}
                 </IconRow>
               </td>
-              <td className={cellClass}>
-                <Icon src={row.rankIconUrl} />
-              </td>
-              <td className={cellClass}>
-                <IconRow>
-                  {row.damageProfileIconUrls.map((url, i) => (
-                    <Icon key={i} src={url} />
-                  ))}
-                </IconRow>
-              </td>
-              <td className={cellClass}>
-                <IconRow>
-                  {row.traitIconUrls.map((url, i) => (
-                    <Icon key={i} src={url} />
-                  ))}
-                </IconRow>
-              </td>
+              <td className={cellClass}>{row.activeLevel}</td>
+              <td className={cellClass}>{row.passiveLevel}</td>
             </tr>
           );
         })}
