@@ -11,11 +11,19 @@ interface OpsCardFrameProps {
   entry: ExpeditionBoardEntry;
   children: ReactNode;
   corner: ReactNode;
+  dimmed: boolean;
+  onClick: () => void;
 }
 
-export function OpsCardFrame({ entry, children, corner }: OpsCardFrameProps) {
+export function OpsCardFrame({ entry, children, corner, dimmed, onClick }: OpsCardFrameProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 text-left shadow-sm dark:border-white/15 dark:bg-neutral-900/40">
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`flex cursor-pointer flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 text-left shadow-sm transition-opacity dark:border-white/15 dark:bg-neutral-900/40 ${dimmed ? "opacity-20" : ""}`}
+    >
       <div className="flex justify-center">
         <IconRow>
           <Icon src={entryRarityIconUrl(entry)} />

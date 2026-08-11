@@ -12,15 +12,25 @@ import type { BoardAssignmentResult } from "../board/board-solver";
 export function OperationCard({
   entry,
   assignment,
+  selectedExpeditionId,
+  onSelect,
 }: {
   entry: ExpeditionBoardEntry;
   assignment: BoardAssignmentResult;
+  selectedExpeditionId: string | null;
+  onSelect: (expeditionId: string) => void;
 }) {
   const unavailable = entryIsUnavailable(entry);
   const solution = assignment.get(entry.expeditionId);
+  const dimmed = selectedExpeditionId !== null && selectedExpeditionId !== entry.expeditionId;
 
   return (
-    <OpsCardFrame entry={entry} corner={entryStatusLabel(entry)}>
+    <OpsCardFrame
+      entry={entry}
+      corner={entryStatusLabel(entry)}
+      dimmed={dimmed}
+      onClick={() => onSelect(entry.expeditionId)}
+    >
       <div className="flex justify-end">
         <IconRow>
           {entry.bonusObjectives.map((o, i) => {

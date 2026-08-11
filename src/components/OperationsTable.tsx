@@ -22,9 +22,13 @@ const cellClass = "border-b border-black/10 px-3 py-2 align-top dark:border-whit
 export function OperationsTable({
   board,
   assignment,
+  selectedExpeditionId,
+  onSelect,
 }: {
   board: ExpeditionBoardEntry[];
   assignment: BoardAssignmentResult;
+  selectedExpeditionId: string | null;
+  onSelect: (expeditionId: string) => void;
 }) {
   if (board.length === 0) {
     return <p>No expeditions on the board right now.</p>;
@@ -55,9 +59,17 @@ export function OperationsTable({
         {sorted.map((entry) => {
           const unavailable = entryIsUnavailable(entry);
           const solution = assignment.get(entry.expeditionId);
+          const dimmed = selectedExpeditionId !== null && selectedExpeditionId !== entry.expeditionId;
 
           return (
-            <tr key={entry.expeditionId}>
+            <tr
+              key={entry.expeditionId}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(entry.expeditionId);
+              }}
+              className={`cursor-pointer transition-opacity ${dimmed ? "opacity-20" : ""}`}
+            >
               <td className={cellClass}>
                 <Icon src={entryRarityIconUrl(entry)} />
               </td>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentToggle } from "./components/EnvironmentToggle";
 import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
 import { Tabs } from "./components/Tabs";
@@ -22,7 +22,10 @@ const TABS = [
 export function App() {
   const [environment, setEnvironment] = useState<Environment>("prod");
   const [activeTab, setActiveTab] = useState(TABS[0].id);
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [selectedExpeditionId, setSelectedExpeditionId] = useState<string | null>(null);
+  const [devModeEnabled, setDevModeEnabled] = useState(false);
+  const lastEightPressRef = useRef(0);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [board, setBoard] = useState<ExpeditionBoardEntry[]>([]);
@@ -44,6 +47,33 @@ export function App() {
       return { assignment: new Map(), solverError: `${error}` };
     }
   }, [board, heroes, priorityOrder]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setSelectedExpeditionId(null);
+        return;
+      }
+      if (e.key !== "8" || e.repeat) return;
+      const now = Date.now();
+      if (now - lastEightPressRef.current < 400) return;
+      lastEightPressRef.current = now;
+      setDevModeEnabled((current) => {
+        const next = !current;
+        if (!next) {
+          setViewMode("cards");
+          setActiveTab("operations");
+        }
+        return next;
+      });
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  function toggleSelection(expeditionId: string) {
+    setSelectedExpeditionId((current) => (current === expeditionId ? null : expeditionId));
+  }
 
   async function go() {
     setLoading(true);
@@ -68,12 +98,15 @@ export function App() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
-      <h1 className="text-2xl font-semibold">TacOps</h1>
+    <main
+      onClick={() => setSelectedExpeditionId(null)}
+      className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+    >
+      <h1 className="text-2xl font-semibold">TacOps by cpunerd (Kharnage)</h1>
       <p>Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board.</p>
 
-      <EnvironmentToggle value={environment} onChange={setEnvironment} />
-      <ViewModeToggle value={viewMode} onChange={setViewMode} />
+      {devModeEnabled && <EnvironmentToggle value={environment} onChange={setEnvironment} />}
+      {devModeEnabled && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
 
       <button
         type="button"
@@ -85,7 +118,7 @@ export function App() {
       </button>
       <p>{status}</p>
 
-      <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
+      {devModeEnabled && <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />}
 
       <div className="w-full overflow-x-auto pt-2">
         {activeTab === "operations" && (
@@ -102,9 +135,19 @@ export function App() {
               </>
             )}
             {viewMode === "table" ? (
-              <OperationsTable board={board} assignment={assignment} />
+              <OperationsTable
+                board={board}
+                assignment={assignment}
+                selectedExpeditionId={selectedExpeditionId}
+                onSelect={toggleSelection}
+              />
             ) : (
-              <OperationsCards board={board} assignment={assignment} />
+              <OperationsCards
+                board={board}
+                assignment={assignment}
+                selectedExpeditionId={selectedExpeditionId}
+                onSelect={toggleSelection}
+              />
             )}
           </>
         )}

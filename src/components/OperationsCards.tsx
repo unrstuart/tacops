@@ -6,9 +6,13 @@ import type { BoardAssignmentResult } from "../board/board-solver";
 export function OperationsCards({
   board,
   assignment,
+  selectedExpeditionId,
+  onSelect,
 }: {
   board: ExpeditionBoardEntry[];
   assignment: BoardAssignmentResult;
+  selectedExpeditionId: string | null;
+  onSelect: (expeditionId: string) => void;
 }) {
   if (board.length === 0) {
     return <p>No expeditions on the board right now.</p>;
@@ -19,7 +23,13 @@ export function OperationsCards({
   return (
     <div className="mt-4 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {sorted.map((entry) => (
-        <OperationCard key={entry.expeditionId} entry={entry} assignment={assignment} />
+        <OperationCard
+          key={entry.expeditionId}
+          entry={entry}
+          assignment={assignment}
+          selectedExpeditionId={selectedExpeditionId}
+          onSelect={onSelect}
+        />
       ))}
     </div>
   );
