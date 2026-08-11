@@ -18,14 +18,10 @@ React/TypeScript frontend (`src/`), running in the OS's native webview.
   Tauri command.
 - `src-tauri/src/loki.rs` — replays the game client's `APP_START` → `CONNECT` → `GET_PLAYER`
   handshake against Snowprint's Loki API to fetch the full player state (roster, resources,
-  expeditions board, ...), exposed as the `fetch_player_data` command. Both commands take an
-  `environment` argument (`"prod"` or `"qa"`) that selects the credentials file, API domain, and
-  the handful of request fields (`environmentId`, `bundleId`, `jenkinsBuildBranchInfo`,
-  `builtInMultiConfigVersion`) that differ between them. Device/hardware fingerprint fields are
-  intentionally left as generic fake values on both environments.
-- **macOS and Windows** — credential auto-discovery is implemented for both. Windows only covers
-  the prod environment for now; QA's credential path on Windows isn't confirmed yet (see
-  [Credentials](#credentials) below). Other platforms (e.g. Linux) aren't implemented.
+  expeditions board, ...), exposed as the `fetch_player_data` command. Device/hardware fingerprint
+  fields are intentionally left as generic fake values.
+- **macOS and Windows** — credential auto-discovery is implemented for both. Other platforms
+  (e.g. Linux) aren't implemented.
 
 ### Frontend (`src/`)
 
@@ -75,17 +71,14 @@ installers you've built — nothing is published publicly until you choose to pu
 ### Credentials
 
 TacOps doesn't manage login — it reads the credentials the actual Tacticus game client already
-wrote to disk. Which file it reads depends on the OS and the Prod/QA toggle in the app:
+wrote to disk. Which file it reads depends on the OS:
 
-| OS | Environment | Path | API domain |
-|---|---|---|---|
-| macOS | Prod | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
-| macOS | QA | `~/Library/Application Support/com.snowprintstudios.loki.qa/staging-loki_user_data.json` | `api-staging.loki.snowprintstudios.com` |
-| Windows | Prod | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
-| Windows | QA | not implemented — the QA client likely uses a different Unity product-name folder, unconfirmed | `api-staging.loki.snowprintstudios.com` |
+| OS | Path | API domain |
+|---|---|---|
+| macOS | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
+| Windows | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
 
-All files need at least `userId` and `clientSecret`; `snowId` is used when present (the prod files
-have it, the QA file typically doesn't).
+This file needs at least `userId` and `clientSecret`; `snowId` is used when present.
 
 ## Style requirements
 
