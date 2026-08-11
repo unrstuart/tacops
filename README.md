@@ -16,8 +16,7 @@ React/TypeScript frontend (`src/`), running in the OS's native webview.
 - `src-tauri/src/credentials.rs` — locates and parses the local Tacticus credentials file (see
   [Credentials](#credentials) below) and exposes it to the frontend as the `find_credentials`
   Tauri command.
-- `src-tauri/src/loki.rs` — replays the game client's `APP_START` → `CONNECT` → `GET_PLAYER`
-  handshake against Snowprint's Loki API to fetch the full player state (roster, resources,
+- `src-tauri/src/loki.rs` — fetches the full player state (roster, resources,
   expeditions board, ...), exposed as the `fetch_player_data` command. Device/hardware fingerprint
   fields are intentionally left as generic fake values.
 - **macOS and Windows** — credential auto-discovery is implemented for both. Other platforms
@@ -73,10 +72,10 @@ installers you've built — nothing is published publicly until you choose to pu
 TacOps doesn't manage login — it reads the credentials the actual Tacticus game client already
 wrote to disk. Which file it reads depends on the OS:
 
-| OS | Path | API domain |
-|---|---|---|
-| macOS | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
-| Windows | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` | `api-live.loki.snowprintstudios.com` |
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/com.snowprintstudios.tacticus/live-loki_user_data.json` |
+| Windows | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` |
 
 This file needs at least `userId` and `clientSecret`; `snowId` is used when present.
 
