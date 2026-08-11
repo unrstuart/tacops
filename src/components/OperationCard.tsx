@@ -6,16 +6,18 @@ import { PortraitList } from "./PortraitList";
 import { DispatchedUnitsRow } from "./DispatchedUnitsRow";
 import { OpsCardFrame } from "./OpsCardFrame";
 import { getObjectiveDisplay, entryIsUnavailable, entryStatusLabel } from "../board/board-view-model";
-import type { ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 export function OperationCard({
   entry,
+  environment,
   assignment,
   selectedExpeditionId,
   onSelect,
 }: {
   entry: ExpeditionBoardEntry;
+  environment: Environment;
   assignment: BoardAssignmentResult;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
@@ -27,6 +29,7 @@ export function OperationCard({
   return (
     <OpsCardFrame
       entry={entry}
+      environment={environment}
       corner={entryStatusLabel(entry)}
       dimmed={dimmed}
       onClick={() => onSelect(entry.expeditionId)}

@@ -137,6 +137,7 @@ export function App() {
             {viewMode === "table" ? (
               <OperationsTable
                 board={board}
+                environment={environment}
                 assignment={assignment}
                 selectedExpeditionId={selectedExpeditionId}
                 onSelect={toggleSelection}
@@ -144,6 +145,7 @@ export function App() {
             ) : (
               <OperationsCards
                 board={board}
+                environment={environment}
                 assignment={assignment}
                 selectedExpeditionId={selectedExpeditionId}
                 onSelect={toggleSelection}

@@ -14,18 +14,20 @@ import {
 } from "../board/board-view-model";
 import { operationName } from "../board/operation-name";
 import { deployIconUrl } from "../board/deploy-icon";
-import type { ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 const cellClass = "border-b border-black/10 px-3 py-2 align-top dark:border-white/15";
 
 export function OperationsTable({
   board,
+  environment,
   assignment,
   selectedExpeditionId,
   onSelect,
 }: {
   board: ExpeditionBoardEntry[];
+  environment: Environment;
   assignment: BoardAssignmentResult;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
@@ -60,6 +62,7 @@ export function OperationsTable({
           const unavailable = entryIsUnavailable(entry);
           const solution = assignment.get(entry.expeditionId);
           const dimmed = selectedExpeditionId !== null && selectedExpeditionId !== entry.expeditionId;
+          const name = operationName(entry.id);
 
           return (
             <tr
@@ -76,7 +79,10 @@ export function OperationsTable({
               <td className={cellClass}>
                 <AllianceCategoryBadge entry={entry} />
               </td>
-              <td className={cellClass}>{operationName(entry.id) ?? entry.id}</td>
+              <td className={cellClass}>
+                {name ?? entry.id}
+                {environment === "qa" && name && <span className="opacity-60"> ({entry.id})</span>}
+              </td>
               <td className={cellClass}>{entry.participants}</td>
               <td className={cellClass}>
                 <IconRow>

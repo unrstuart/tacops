@@ -1,15 +1,17 @@
 import { OperationCard } from "./OperationCard";
 import { sortByRarityDescending } from "../board/board-view-model";
-import type { ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 export function OperationsCards({
   board,
+  environment,
   assignment,
   selectedExpeditionId,
   onSelect,
 }: {
   board: ExpeditionBoardEntry[];
+  environment: Environment;
   assignment: BoardAssignmentResult;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
@@ -26,6 +28,7 @@ export function OperationsCards({
         <OperationCard
           key={entry.expeditionId}
           entry={entry}
+          environment={environment}
           assignment={assignment}
           selectedExpeditionId={selectedExpeditionId}
           onSelect={onSelect}

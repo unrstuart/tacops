@@ -5,17 +5,20 @@ import { AllianceCategoryBadge } from "./AllianceCategoryBadge";
 import { entryRarityIconUrl } from "../board/board-view-model";
 import { operationName } from "../board/operation-name";
 import { deployIconUrl } from "../board/deploy-icon";
-import type { ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry } from "../api/types";
 
 interface OpsCardFrameProps {
   entry: ExpeditionBoardEntry;
+  environment: Environment;
   children: ReactNode;
   corner: ReactNode;
   dimmed: boolean;
   onClick: () => void;
 }
 
-export function OpsCardFrame({ entry, children, corner, dimmed, onClick }: OpsCardFrameProps) {
+export function OpsCardFrame({ entry, environment, children, corner, dimmed, onClick }: OpsCardFrameProps) {
+  const name = operationName(entry.id);
+
   return (
     <div
       onClick={(e) => {
@@ -28,7 +31,10 @@ export function OpsCardFrame({ entry, children, corner, dimmed, onClick }: OpsCa
         <IconRow>
           <Icon src={entryRarityIconUrl(entry)} />
           <AllianceCategoryBadge entry={entry} />
-          <span className="font-medium">{operationName(entry.id) ?? entry.id}</span>
+          <span className="font-medium">
+            {name ?? entry.id}
+            {environment === "qa" && name && <span className="opacity-60"> ({entry.id})</span>}
+          </span>
         </IconRow>
       </div>
       <div className="flex flex-col gap-2">{children}</div>
