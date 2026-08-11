@@ -1,13 +1,15 @@
 const ALLIANCE_ICON_FILE: Record<string, string> = {
-  Imperial: "alliance_imperial.png",
-  Xenos: "alliance_xenos.png",
-  Chaos: "alliance_chaos.png",
+  Imperial: "ui_icons_quest_expedition_frame_imperial.png",
+  Xenos: "ui_icons_quest_expedition_frame_xenos.png",
+  Chaos: "ui_icons_quest_expedition_frame_chaos.png",
 };
 
-export function allianceIconUrl(alliance: string): string {
-  const file = ALLIANCE_ICON_FILE[alliance];
-  if (!file) {
+const NEUTRAL_ICON_FILE = "ui_icons_quest_expedition_frame_neutral.png";
+
+export function allianceIconUrl(alliance: string | undefined): string {
+  const file = alliance ? ALLIANCE_ICON_FILE[alliance] : undefined;
+  if (alliance && !file) {
     throw new Error(`Unknown alliance: ${alliance}`);
   }
-  return new URL(`../assets/alliances/${file}`, import.meta.url).href;
+  return new URL(`../assets/alliances/${file ?? NEUTRAL_ICON_FILE}`, import.meta.url).href;
 }

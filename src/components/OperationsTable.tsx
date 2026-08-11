@@ -1,13 +1,12 @@
 import { Icon } from "./Icon";
 import { IconRow } from "./IconRow";
 import { IconBadge } from "./IconBadge";
-import { AllianceCell } from "./AllianceCell";
+import { AllianceCategoryBadge } from "./AllianceCategoryBadge";
 import { RewardsCell } from "./RewardsCell";
 import { PortraitList } from "./PortraitList";
 import { DispatchedUnitsRow } from "./DispatchedUnitsRow";
 import {
   sortByRarityDescending,
-  categoryIconUrl,
   entryRarityIconUrl,
   entryIsUnavailable,
   entryStatusLabel,
@@ -36,7 +35,6 @@ export function OperationsTable({
     <table className="mt-4 w-full table-auto border-collapse text-left">
       <thead>
         <tr>
-          <th className={cellClass}>Alliance</th>
           <th className={cellClass}>Category</th>
           <th className={cellClass}>Rarity</th>
           <th className={cellClass}>
@@ -59,10 +57,7 @@ export function OperationsTable({
           return (
             <tr key={entry.expeditionId}>
               <td className={cellClass}>
-                <AllianceCell entry={entry} />
-              </td>
-              <td className={cellClass}>
-                <Icon src={categoryIconUrl(entry)} />
+                <AllianceCategoryBadge entry={entry} />
               </td>
               <td className={cellClass}>
                 <Icon src={entryRarityIconUrl(entry)} />

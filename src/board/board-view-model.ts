@@ -8,8 +8,6 @@ import { factionIconUrl } from "../factions/faction-icon";
 import { rangedAttackIconUrl } from "./ranged-attack-icon";
 import { rewardIconUrl } from "./reward-icon";
 import { operationTypeIconUrl } from "./operation-type-icon";
-import { allianceIconUrl } from "./alliance-icon";
-import { requiredAlliance } from "./board-alliance";
 import { isCharacterId } from "../api/fetch-player-data";
 import type { BonusObjective, ExpeditionBoardEntry } from "../api/types";
 
@@ -41,11 +39,6 @@ export function sortByRarityDescending(board: ExpeditionBoardEntry[]): Expeditio
 
 export function categoryIconUrl(entry: ExpeditionBoardEntry): string {
   return operationTypeIconUrl(entry.category);
-}
-
-export function entryAllianceIconUrl(entry: ExpeditionBoardEntry): string | undefined {
-  const alliance = requiredAlliance(entry.category);
-  return alliance ? allianceIconUrl(alliance) : undefined;
 }
 
 export function entryRarityIconUrl(entry: ExpeditionBoardEntry): string {

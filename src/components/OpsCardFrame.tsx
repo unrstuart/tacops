@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import { IconRow } from "./IconRow";
-import { categoryIconUrl, entryAllianceIconUrl, entryRarityIconUrl } from "../board/board-view-model";
+import { AllianceCategoryBadge } from "./AllianceCategoryBadge";
+import { entryRarityIconUrl } from "../board/board-view-model";
 import { deployIconUrl } from "../board/deploy-icon";
 import type { ExpeditionBoardEntry } from "../api/types";
 
@@ -12,13 +13,10 @@ interface OpsCardFrameProps {
 }
 
 export function OpsCardFrame({ entry, children, corner }: OpsCardFrameProps) {
-  const allianceIcon = entryAllianceIconUrl(entry);
-
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 text-left shadow-sm dark:border-white/15 dark:bg-neutral-900/40">
       <IconRow>
-        {allianceIcon && <Icon src={allianceIcon} />}
-        <Icon src={categoryIconUrl(entry)} />
+        <AllianceCategoryBadge entry={entry} />
         <Icon src={entryRarityIconUrl(entry)} />
       </IconRow>
       <div className="flex flex-col gap-2">{children}</div>
