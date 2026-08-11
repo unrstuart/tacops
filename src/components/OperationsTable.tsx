@@ -12,6 +12,7 @@ import {
   entryStatusLabel,
   getObjectiveDisplay,
 } from "../board/board-view-model";
+import { operationName } from "../board/operation-name";
 import { deployIconUrl } from "../board/deploy-icon";
 import type { ExpeditionBoardEntry } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
@@ -35,8 +36,9 @@ export function OperationsTable({
     <table className="mt-4 w-full table-auto border-collapse text-left">
       <thead>
         <tr>
-          <th className={cellClass}>Category</th>
           <th className={cellClass}>Rarity</th>
+          <th className={cellClass}>Category</th>
+          <th className={cellClass}>Name</th>
           <th className={cellClass}>
             <Icon src={deployIconUrl()} title="Participants" />
           </th>
@@ -57,11 +59,12 @@ export function OperationsTable({
           return (
             <tr key={entry.expeditionId}>
               <td className={cellClass}>
-                <AllianceCategoryBadge entry={entry} />
-              </td>
-              <td className={cellClass}>
                 <Icon src={entryRarityIconUrl(entry)} />
               </td>
+              <td className={cellClass}>
+                <AllianceCategoryBadge entry={entry} />
+              </td>
+              <td className={cellClass}>{operationName(entry.id) ?? entry.id}</td>
               <td className={cellClass}>{entry.participants}</td>
               <td className={cellClass}>
                 <IconRow>
