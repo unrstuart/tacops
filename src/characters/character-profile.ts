@@ -9,6 +9,7 @@ interface AttackProfile {
 
 interface CharacterData {
   id: string;
+  name: string;
   traits: string[];
   alliance: string;
   faction: string;
@@ -29,6 +30,7 @@ const abilityById = new Map((abilityData as AbilityData[]).map((a) => [a.id, a])
 const DAMAGE_PROFILE_KEYS = ["damageProfile", "damageProfile_2", "damageProfile_3"];
 
 export interface CharacterProfile {
+  name: string;
   damageProfiles: string[];
   traits: string[];
   alliance: string;
@@ -64,6 +66,7 @@ export function getCharacterProfile(characterId: string): CharacterProfile {
   addAbilityDamageProfiles(damageProfiles, character.passiveAbilityIds);
 
   return {
+    name: character.name,
     damageProfiles: [...damageProfiles],
     traits: character.traits,
     alliance: character.alliance,
