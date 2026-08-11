@@ -2,6 +2,8 @@ name: Build macOS
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   build-macos:
@@ -36,7 +38,18 @@ jobs:
       - name: install frontend dependencies
         run: npm ci
 
-      - uses: tauri-apps/tauri-action@v1
+      - name: Upload to the release that triggered this run
+        if: github.event_name == 'release'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ github.event.release.id }}
+          args: ${{ matrix.args }}
+
+      - name: Build and create/update a draft release (manual runs)
+        if: github.event_name != 'release'
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
