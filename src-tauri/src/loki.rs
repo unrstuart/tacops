@@ -103,7 +103,12 @@ pub async fn fetch_player_data(
     snow_id: String,
 ) -> Result<Value, String> {
     let config = environment_config(&environment)?;
-    let client = reqwest::Client::new();
+    // Without an explicit timeout, reqwest waits forever on a stalled connection - a real request
+    // that just hung was reported to hang the whole app, since nothing here ever gave up.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
     let base_url = format!("{}/{user_id}", config.base_url);
 
     let app_start_body = envelope(

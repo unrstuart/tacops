@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Icon } from "./components/Icon";
+import { Spinner } from "./components/Spinner";
+import { ErrorIcon } from "./components/ErrorIcon";
+import { watchAdIconUrl } from "./watch-ad-icon";
 import { EnvironmentToggle } from "./components/EnvironmentToggle";
 import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
 import { Tabs } from "./components/Tabs";
@@ -9,7 +13,8 @@ import { MowTable } from "./components/MowTable";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { fetchPlayerData } from "./api/fetch-player-data";
-import { solveBoardAssignment, type BoardAssignmentResult } from "./board/board-solver";
+import type { BoardAssignmentResult } from "./board/board-solver";
+import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
 import type { ResourceKey } from "./board/reward-amount";
 import type { Environment, ExpeditionBoardEntry, RawUnit } from "./api/types";
 
@@ -19,6 +24,9 @@ const TABS = [
   { id: "mows", label: "Machines of War" },
 ];
 
+const FETCH_COUNTDOWN_SECONDS = 60;
+const SOLVER_COUNTDOWN_SECONDS = 60; // 6 lexicographic passes x the 10s-per-pass solver timeout
+
 export function App() {
   const [environment, setEnvironment] = useState<Environment>("prod");
   const [activeTab, setActiveTab] = useState(TABS[0].id);
@@ -27,25 +35,77 @@ export function App() {
   const [devModeEnabled, setDevModeEnabled] = useState(false);
   const lastEightPressRef = useRef(0);
   const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [fetchState, setFetchState] = useState<"idle" | "loading" | "error" | "success">("idle");
+  const [secondsRemaining, setSecondsRemaining] = useState(FETCH_COUNTDOWN_SECONDS);
   const [board, setBoard] = useState<ExpeditionBoardEntry[]>([]);
   const [heroes, setHeroes] = useState<RawUnit[]>([]);
   const [machinesOfWar, setMachinesOfWar] = useState<RawUnit[]>([]);
+  const [adViewsRemaining, setAdViewsRemaining] = useState<number | null>(null);
   const [priorityOrder, setPriorityOrder] = useState<[ResourceKey, ResourceKey, ResourceKey]>([
     "crusadeBomb",
     "intel",
     "crusadeNpc",
   ]);
 
-  const { assignment, solverError } = useMemo((): { assignment: BoardAssignmentResult; solverError?: string } => {
+  const [solverState, setSolverState] = useState<"idle" | "solving" | "success" | "error">("idle");
+  const [solverSecondsRemaining, setSolverSecondsRemaining] = useState(SOLVER_COUNTDOWN_SECONDS);
+  const [assignment, setAssignment] = useState<BoardAssignmentResult>(new Map());
+  const [solverError, setSolverError] = useState<string>();
+  const [solverDegradedReason, setSolverDegradedReason] = useState<string>();
+  const [solverFailedReason, setSolverFailedReason] = useState<string>();
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+
+  // Terminate any worker still running on unmount (e.g. hot-reload in dev).
+  useEffect(() => {
+    return () => workerRef.current?.terminate();
+  }, []);
+
+  // The solver runs entirely in a Web Worker (javascript-lp-solver is synchronous with no
+  // async/worker mode of its own) so it can never block the main thread - the board renders
+  // immediately from fetched data, and this fills in the suggested assignment once it's ready.
+  // Terminating and recreating the worker on every change (rather than queuing) guarantees a
+  // priority-order change doesn't have to wait behind a slow, now-stale solve.
+  useEffect(() => {
     if (board.length === 0 || heroes.length === 0) {
-      return { assignment: new Map() };
+      workerRef.current?.terminate();
+      setAssignment(new Map());
+      setSolverState("idle");
+      setSolverError(undefined);
+      setSolverDegradedReason(undefined);
+      setSolverFailedReason(undefined);
+      return;
     }
-    try {
-      return { assignment: solveBoardAssignment(board, heroes, priorityOrder) };
-    } catch (error) {
-      return { assignment: new Map(), solverError: `${error}` };
-    }
+
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
+
+    workerRef.current?.terminate();
+    const worker = new Worker(new URL("./board/board-solver.worker.ts", import.meta.url), { type: "module" });
+    workerRef.current = worker;
+
+    worker.onmessage = (event: MessageEvent<SolveResponse>) => {
+      if (event.data.requestId !== requestIdRef.current) return; // stale response, ignore
+      if (event.data.status === "success") {
+        setAssignment(new Map(event.data.assignmentEntries));
+        setSolverDegradedReason(event.data.solveStatus === "degraded" ? event.data.message : undefined);
+        setSolverFailedReason(event.data.solveStatus === "failed" ? event.data.message : undefined);
+        setSolverError(undefined);
+        setSolverState("success");
+      } else {
+        setSolverError(event.data.error);
+        setSolverDegradedReason(undefined);
+        setSolverFailedReason(undefined);
+        setSolverState("error");
+      }
+    };
+
+    setSolverState("solving");
+    setSolverError(undefined);
+    setSolverDegradedReason(undefined);
+    setSolverFailedReason(undefined);
+    const request: SolveRequest = { requestId, board, heroes, priorityOrder };
+    worker.postMessage(request);
   }, [board, heroes, priorityOrder]);
 
   useEffect(() => {
@@ -71,12 +131,34 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Purely a visual "roughly how long this could take" indicator - actual enforcement is via the
+  // RPC timeouts in fetchPlayerData, not this countdown.
+  useEffect(() => {
+    if (fetchState !== "loading") return;
+    setSecondsRemaining(FETCH_COUNTDOWN_SECONDS);
+    const interval = setInterval(() => {
+      setSecondsRemaining((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [fetchState]);
+
+  // Same purely-visual purpose as the fetch countdown above - actual enforcement is the
+  // solver's own per-pass timeout in board-solver.ts.
+  useEffect(() => {
+    if (solverState !== "solving") return;
+    setSolverSecondsRemaining(SOLVER_COUNTDOWN_SECONDS);
+    const interval = setInterval(() => {
+      setSolverSecondsRemaining((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [solverState]);
+
   function toggleSelection(expeditionId: string) {
     setSelectedExpeditionId((current) => (current === expeditionId ? null : expeditionId));
   }
 
   async function go() {
-    setLoading(true);
+    setFetchState("loading");
     setBoard([]);
     try {
       setStatus("Reading local credentials...");
@@ -90,10 +172,12 @@ export function App() {
       setBoard(data.board);
       setHeroes(data.heroes);
       setMachinesOfWar(data.machinesOfWar);
+      setAdViewsRemaining(data.adViewsRemaining);
+      setFetchState("success");
     } catch (error) {
+      console.error("[App] go(): caught error", error);
       setStatus(`Failed: ${error}`);
-    } finally {
-      setLoading(false);
+      setFetchState("error");
     }
   }
 
@@ -111,12 +195,22 @@ export function App() {
       <button
         type="button"
         onClick={go}
-        disabled={loading}
+        disabled={fetchState === "loading"}
         className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
       >
         GO
       </button>
-      <p>{status}</p>
+      {adViewsRemaining !== null && (
+        <p className="inline-flex items-center gap-1">
+          <Icon src={watchAdIconUrl()} title="Ad views remaining" />
+          {adViewsRemaining}
+        </p>
+      )}
+      <p className="inline-flex items-center gap-2">
+        {fetchState === "loading" && <Spinner seconds={secondsRemaining} />}
+        {fetchState === "error" && <ErrorIcon />}
+        {status}
+      </p>
 
       {devModeEnabled && <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />}
 
@@ -131,26 +225,42 @@ export function App() {
                     Couldn't compute a suggested assignment: {solverError}
                   </p>
                 )}
+                {solverFailedReason && (
+                  <p className="mt-2 text-red-600 dark:text-red-400">{solverFailedReason}</p>
+                )}
+                {solverDegradedReason && (
+                  <p className="mt-2 text-amber-600 dark:text-amber-400">{solverDegradedReason}</p>
+                )}
                 <RequiredCharacterPool assignment={assignment} />
               </>
             )}
-            {viewMode === "table" ? (
-              <OperationsTable
-                board={board}
-                environment={environment}
-                assignment={assignment}
-                selectedExpeditionId={selectedExpeditionId}
-                onSelect={toggleSelection}
-              />
-            ) : (
-              <OperationsCards
-                board={board}
-                environment={environment}
-                assignment={assignment}
-                selectedExpeditionId={selectedExpeditionId}
-                onSelect={toggleSelection}
-              />
-            )}
+            <div className="relative w-full">
+              {solverState === "solving" && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/70 dark:bg-neutral-900/70">
+                  <p className="font-medium">Solving</p>
+                  <Spinner size={64} seconds={solverSecondsRemaining} />
+                </div>
+              )}
+              <div className={solverState === "solving" ? "pointer-events-none" : ""}>
+                {viewMode === "table" ? (
+                  <OperationsTable
+                    board={board}
+                    environment={environment}
+                    assignment={assignment}
+                    selectedExpeditionId={selectedExpeditionId}
+                    onSelect={toggleSelection}
+                  />
+                ) : (
+                  <OperationsCards
+                    board={board}
+                    environment={environment}
+                    assignment={assignment}
+                    selectedExpeditionId={selectedExpeditionId}
+                    onSelect={toggleSelection}
+                  />
+                )}
+              </div>
+            </div>
           </>
         )}
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}

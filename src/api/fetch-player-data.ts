@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout } from "./invoke-with-timeout";
 import characterData from "../assets/character-data.json";
 import mowData from "../assets/mow-data.json";
 import type { Credentials, Environment, ExpeditionBoardEntry, RawUnit } from "./types";
@@ -14,11 +14,15 @@ export interface PlayerData {
   board: ExpeditionBoardEntry[];
   heroes: RawUnit[];
   machinesOfWar: RawUnit[];
+  adViewsRemaining: number;
 }
 
 export async function fetchPlayerData(environment: Environment): Promise<PlayerData> {
-  const credentials = await invoke<Credentials>("find_credentials", { environment });
-  const response = await invoke<any>("fetch_player_data", { environment, ...credentials });
+  const credentials = await invokeWithTimeout<Credentials>("find_credentials", { environment }, 20_000);
+  // fetch_player_data replays 3 sequential requests server-side (APP_START -> CONNECT ->
+  // GET_PLAYER), each individually bounded at 20s on the Rust side - so the outer timeout here
+  // needs enough room for all three in the worst realistic case, not just one.
+  const response = await invokeWithTimeout<any>("fetch_player_data", { environment, ...credentials }, 60_000);
 
   // The API omits the board entirely (rather than sending an empty array) when a player has no
   // expeditions queued and none in progress - e.g. right after claiming everything, before the
@@ -36,5 +40,6 @@ export async function fetchPlayerData(environment: Environment): Promise<PlayerD
     board,
     heroes: units.filter((u) => characterIds.has(u.id)),
     machinesOfWar: units.filter((u) => mowIds.has(u.id)),
+    adViewsRemaining: hero?.player?.adViews?.currentAmount ?? 0,
   };
 }
