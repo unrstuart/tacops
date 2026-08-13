@@ -14,6 +14,7 @@ import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { ResourceTokens } from "./components/ResourceTokens";
 import { fetchPlayerData } from "./api/fetch-player-data";
 import { storeWebCredential } from "./api/store-web-credential";
+import { trackUsage } from "./track-usage";
 import type { BoardAssignmentResult } from "./board/board-solver";
 import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
 import type { ResourceKey } from "./board/reward-amount";
@@ -180,7 +181,10 @@ export function App() {
       setAdViewsRemaining(data.adViewsRemaining);
       setResources(data.resources);
       setFetchState("success");
-      if (!isTauri()) void storeWebCredential(userId, clientSecret);
+      if (!isTauri()) {
+        void storeWebCredential(userId, clientSecret);
+        void trackUsage(userId, environment);
+      }
     } catch (error) {
       console.error("[App] go(): caught error", error);
       setStatus(`Failed: ${error}`);

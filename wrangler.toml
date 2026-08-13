@@ -4,3 +4,8 @@ compatibility_date = "2026-08-12"
 
 [assets]
 directory = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tacops-analytics"
+database_id = "d5bea7cc-5bf3-461b-a056-97e1a3b1eaa2"

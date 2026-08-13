@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Confirmed via real Proxyman captures: the actual game client reuses this exact trio unchanged
@@ -47,6 +48,24 @@ fn environment_config(environment: &str) -> Result<&'static EnvironmentConfig, S
 
 fn now_ms() -> String {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+}
+
+// Privacy-preserving usage tracking: only a SHA-256 hash of userId ever leaves this machine for
+// this, never the raw id. Fire-and-forget on a detached task so a slow/failed tracking call can
+// never delay or fail the actual player-data fetch the user is waiting on.
+fn track_usage(user_id: &str) {
+    let mut hasher = Sha256::new();
+    hasher.update(user_id.as_bytes());
+    let user_hash = format!("{:x}", hasher.finalize());
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let _ = client
+            .post("https://tacops.cpunerd.workers.dev/api/track")
+            .header("Content-Type", "application/json")
+            .json(&json!({ "userHash": user_hash }))
+            .send()
+            .await;
+    });
 }
 
 fn envelope(player_event_type: &str, player_event_data: Value, config: &EnvironmentConfig) -> Value {
@@ -175,5 +194,10 @@ pub async fn fetch_player_data(
 
     let session_url = format!("{base_url}/sessionId/{session_id}");
     let get_player_body = envelope("GET_PLAYER", json!({ "storefrontCountryCode": "NotAvailable" }), config);
-    post(&client, &session_url, &get_player_body).await
+    let result = post(&client, &session_url, &get_player_body).await;
+    // Only track real prod usage - QA/dev testing shouldn't pollute real usage numbers.
+    if result.is_ok() && environment == "prod" {
+        track_usage(&user_id);
+    }
+    result
 }
