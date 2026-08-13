@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "worker:dev": "vite build && wrangler dev"
+    "worker:dev": "vite build && wrangler dev",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -27,6 +28,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
+    "vitest": "^4.1.10",
     "wrangler": "^4.122.0"
   }
 }

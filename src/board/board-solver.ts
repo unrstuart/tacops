@@ -280,6 +280,39 @@ function runPasses(model: LpModel): PassesResult {
   return { result: lastGoodResult!, status: "ok" };
 }
 
+export interface GroupRequirement {
+  key: string;
+  count: number;
+  eligibleAssignedIds: string[]; // assigned characters eligible for this group
+}
+
+// Exhaustively checks every subset of assignedIds (a board's participant count, always small - at
+// most 2^5 = 32 subsets) against every group's count at once, returning the smallest one that
+// still satisfies all of them. This replaces a per-group-independent "take the first N eligible"
+// pass that could pick a character for one group without noticing another already-required
+// character already satisfies it for free - unlike a greedy per-character pass, an exhaustive
+// check like this is guaranteed to find the true minimum, not an order-dependent approximation.
+export function findMinimalRequiredSubset(assignedIds: string[], groupRequirements: GroupRequirement[]): Set<string> {
+  const n = assignedIds.length;
+  let best: Set<string> | null = null;
+
+  for (let mask = 0; mask < 1 << n; mask++) {
+    const subset = new Set<string>();
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) subset.add(assignedIds[i]);
+    }
+
+    const satisfiesAll = groupRequirements.every(
+      (group) => group.eligibleAssignedIds.filter((id) => subset.has(id)).length >= group.count,
+    );
+    if (satisfiesAll && (best === null || subset.size < best.size)) {
+      best = subset;
+    }
+  }
+
+  return best ?? new Set(assignedIds);
+}
+
 function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: string[]): BoardAssignmentResult {
   const isOne = (name: string) => Math.round(Number(result[name] ?? 0)) === 1;
 
@@ -306,16 +339,16 @@ function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: s
       }
     }
 
-    const required = new Set<string>();
+    let required = new Set<string>();
     if (bonusCompleted) {
       const groups = built.groupsByBoard.get(boardId) ?? [];
       const eligibleByGroup = built.eligibleCharactersByBoardGroup.get(boardId)!;
-      for (const group of groups) {
-        const eligibleAssigned = (eligibleByGroup.get(group.key) ?? []).filter((id) => assigned.has(id));
-        for (const id of eligibleAssigned.slice(0, group.count)) {
-          required.add(id);
-        }
-      }
+      const groupRequirements: GroupRequirement[] = groups.map((group) => ({
+        key: group.key,
+        count: group.count,
+        eligibleAssignedIds: (eligibleByGroup.get(group.key) ?? []).filter((id) => assigned.has(id)),
+      }));
+      required = findMinimalRequiredSubset([...assigned], groupRequirements);
     }
 
     const optional = [...assigned].filter((id) => !required.has(id));
