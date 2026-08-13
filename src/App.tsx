@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { Icon } from "./components/Icon";
 import { Spinner } from "./components/Spinner";
 import { ErrorIcon } from "./components/ErrorIcon";
-import { watchAdIconUrl } from "./watch-ad-icon";
 import { EnvironmentToggle } from "./components/EnvironmentToggle";
 import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
 import { Tabs } from "./components/Tabs";
@@ -13,12 +11,13 @@ import { CharactersTable } from "./components/CharactersTable";
 import { MowTable } from "./components/MowTable";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
+import { ResourceTokens } from "./components/ResourceTokens";
 import { fetchPlayerData } from "./api/fetch-player-data";
 import { storeWebCredential } from "./api/store-web-credential";
 import type { BoardAssignmentResult } from "./board/board-solver";
 import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
 import type { ResourceKey } from "./board/reward-amount";
-import type { Environment, ExpeditionBoardEntry, RawUnit } from "./api/types";
+import type { Environment, ExpeditionBoardEntry, PlayerResources, RawUnit } from "./api/types";
 
 const TABS = [
   { id: "operations", label: "Operations" },
@@ -46,6 +45,7 @@ export function App() {
   const [heroes, setHeroes] = useState<RawUnit[]>([]);
   const [machinesOfWar, setMachinesOfWar] = useState<RawUnit[]>([]);
   const [adViewsRemaining, setAdViewsRemaining] = useState<number | null>(null);
+  const [resources, setResources] = useState<PlayerResources | null>(null);
   const [priorityOrder, setPriorityOrder] = useState<[ResourceKey, ResourceKey, ResourceKey]>([
     "crusadeBomb",
     "intel",
@@ -178,6 +178,7 @@ export function App() {
       setHeroes(data.heroes);
       setMachinesOfWar(data.machinesOfWar);
       setAdViewsRemaining(data.adViewsRemaining);
+      setResources(data.resources);
       setFetchState("success");
       if (!isTauri()) void storeWebCredential(userId, clientSecret);
     } catch (error) {
@@ -248,12 +249,7 @@ export function App() {
           GO
         </button>
       </form>
-      {adViewsRemaining !== null && (
-        <p className="inline-flex items-center gap-1">
-          <Icon src={watchAdIconUrl()} title="Ad views remaining" />
-          {adViewsRemaining}
-        </p>
-      )}
+      {resources && <ResourceTokens resources={resources} adViewsRemaining={adViewsRemaining} />}
       <p className="inline-flex items-center gap-2">
         {fetchState === "loading" && <Spinner seconds={secondsRemaining} />}
         {fetchState === "error" && <ErrorIcon />}
