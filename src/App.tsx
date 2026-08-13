@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { Icon } from "./components/Icon";
 import { Spinner } from "./components/Spinner";
 import { ErrorIcon } from "./components/ErrorIcon";
@@ -13,6 +14,7 @@ import { MowTable } from "./components/MowTable";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { fetchPlayerData } from "./api/fetch-player-data";
+import { storeWebCredential } from "./api/store-web-credential";
 import type { BoardAssignmentResult } from "./board/board-solver";
 import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
 import type { ResourceKey } from "./board/reward-amount";
@@ -34,6 +36,9 @@ export function App() {
   const [selectedExpeditionId, setSelectedExpeditionId] = useState<string | null>(null);
   const [devModeEnabled, setDevModeEnabled] = useState(false);
   const lastEightPressRef = useRef(0);
+  const [userId, setUserId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [showClientSecret, setShowClientSecret] = useState(false);
   const [status, setStatus] = useState("");
   const [fetchState, setFetchState] = useState<"idle" | "loading" | "error" | "success">("idle");
   const [secondsRemaining, setSecondsRemaining] = useState(FETCH_COUNTDOWN_SECONDS);
@@ -163,7 +168,7 @@ export function App() {
     try {
       setStatus("Reading local credentials...");
       setStatus("Fetching player data...");
-      const data = await fetchPlayerData(environment);
+      const data = await fetchPlayerData(environment, { userId, clientSecret });
       setStatus(
         data.board.length === 0
           ? "Couldn't find any expeditions. Have you refreshed your board after claiming your completed operations?"
@@ -174,6 +179,7 @@ export function App() {
       setMachinesOfWar(data.machinesOfWar);
       setAdViewsRemaining(data.adViewsRemaining);
       setFetchState("success");
+      if (!isTauri()) void storeWebCredential(userId, clientSecret);
     } catch (error) {
       console.error("[App] go(): caught error", error);
       setStatus(`Failed: ${error}`);
@@ -187,19 +193,61 @@ export function App() {
       className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
     >
       <h1 className="text-2xl font-semibold">TacOps by cpunerd (Kharnage)</h1>
-      <p>Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board.</p>
+      <p>
+        {isTauri()
+          ? "Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board."
+          : "Enter your Tacticus user ID and client secret to fetch your live account data and show your current expeditions board. Nothing you enter here is stored - only your browser remembers it, if you let it."}
+      </p>
 
       {devModeEnabled && <EnvironmentToggle value={environment} onChange={setEnvironment} />}
       {devModeEnabled && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
 
-      <button
-        type="button"
-        onClick={go}
-        disabled={fetchState === "loading"}
-        className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          go();
+        }}
+        className="flex flex-col items-center gap-2"
       >
-        GO
-      </button>
+        {!isTauri() && (
+          <>
+            <input
+              type="text"
+              name="userId"
+              autoComplete="username"
+              placeholder="User ID"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
+            />
+            <div className="relative w-64">
+              <input
+                type={showClientSecret ? "text" : "password"}
+                name="clientSecret"
+                autoComplete="current-password"
+                placeholder="Client secret"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 pr-14 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
+              />
+              <button
+                type="button"
+                onClick={() => setShowClientSecret((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 text-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+              >
+                {showClientSecret ? "Hide" : "Show"}
+              </button>
+            </div>
+          </>
+        )}
+        <button
+          type="submit"
+          disabled={fetchState === "loading"}
+          className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
+        >
+          GO
+        </button>
+      </form>
       {adViewsRemaining !== null && (
         <p className="inline-flex items-center gap-1">
           <Icon src={watchAdIconUrl()} title="Ad views remaining" />

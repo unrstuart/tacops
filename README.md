@@ -1,13 +1,16 @@
 # TacOps
 
-Reads your local Tacticus credentials, fetches your live account data, shows your current
-operations board (as cards or a table), and uses an integer-programming solver to suggest which
-characters to send on the rest of your operations.
+Fetches your live Tacticus account data, shows your current operations board (as cards or a
+table), and uses an integer-programming solver to suggest which characters to send on the rest of
+your operations. Ships two ways: a [Tauri](https://tauri.app/) desktop app that reads your local
+Tacticus credentials automatically, and a website (see [Web version](#web-version)) where you
+enter them yourself each visit.
 
 ## Tech specs
 
-TacOps is a [Tauri](https://tauri.app/) desktop app: a Rust backend (`src-tauri/`) paired with a
-React/TypeScript frontend (`src/`), running in the OS's native webview.
+The desktop app is a Tauri app: a Rust backend (`src-tauri/`) paired with a React/TypeScript
+frontend (`src/`), running in the OS's native webview. The website shares that same `src/`
+frontend, swapping the Rust backend for a small serverless proxy (see below).
 
 ### Backend (`src-tauri/`)
 
@@ -97,6 +100,35 @@ wrote to disk. Which file it reads depends on the OS:
 | Windows | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` |
 
 This file needs at least `userId` and `clientSecret`; `snowId` is used when present.
+
+## Web version
+
+TacOps also ships as a website, sharing the same `src/` React codebase as the desktop app rather
+than being a separate project - `isTauri()` (`@tauri-apps/api/core`) picks the transport at
+runtime:
+
+- **Credentials**: the desktop app auto-discovers them from disk (see above); the website instead
+  shows a `userId`/`clientSecret` form above the `GO` button (`App.tsx`), with `autoComplete`
+  attributes set so the browser's own password manager can offer to remember them. Nothing is
+  stored server-side - each visit starts blank unless the browser fills it in.
+- **Fetching player data**: the desktop app calls `fetch_player_data` in `src-tauri/src/loki.rs`
+  directly; a browser can't do that itself (the game's API doesn't send CORS headers), so the
+  website instead calls a same-origin proxy at `/api/fetch-player-data`
+  (`functions/api/fetch-player-data.ts`, backed by `functions/_lib/loki-client.ts`) that replays
+  the identical APP_START → CONNECT → GET_PLAYER handshake server-side and returns the same JSON
+  shape - kept in sync with `loki.rs` by hand, since Tauri commands and Cloudflare Pages Functions
+  can't share Rust/TS code directly.
+- **Hosting**: [Cloudflare Pages](https://pages.cloudflare.com/), for both the static frontend
+  build and the proxy Function - one platform, one domain, so the frontend's calls to its own
+  proxy are same-origin and need no CORS configuration of their own. The Cloudflare dashboard's
+  own GitHub integration (Workers & Pages → Create application → Pages → Connect to Git) auto-
+  deploys on every push to `master`, so there's no separate GitHub Actions workflow for this.
+  Build command `npm run build`, output directory `dist`; the `functions/` directory is picked up
+  automatically. No environment variables or secrets need to be configured - the proxy is
+  stateless.
+- **Local dev**: run `npm run dev` (Vite, port `1420`) in one terminal and `npm run pages:dev`
+  (wrangler, proxying to that port) in another, so `/api/fetch-player-data` is available locally
+  alongside the usual hot-reloading frontend.
 
 ## Style requirements
 
