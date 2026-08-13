@@ -3,7 +3,7 @@ import { invokeWithTimeout } from "./invoke-with-timeout";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import characterData from "../assets/character-data.json";
 import mowData from "../assets/mow-data.json";
-import type { Credentials, Environment, ExpeditionBoardEntry, RawUnit } from "./types";
+import type { Credentials, Environment, ExpeditionBoardEntry, PlayerResources, RawUnit } from "./types";
 
 const characterIds = new Set((characterData as { id: string }[]).map((c) => c.id));
 const mowIds = new Set((mowData as { mows: { snowprintId: string }[] }).mows.map((m) => m.snowprintId));
@@ -17,6 +17,7 @@ export interface PlayerData {
   heroes: RawUnit[];
   machinesOfWar: RawUnit[];
   adViewsRemaining: number;
+  resources: PlayerResources;
 }
 
 // webCredentials is only read on the web build - the desktop build auto-discovers credentials
@@ -51,10 +52,23 @@ export async function fetchPlayerData(
     ...(data as object),
   }));
 
+  // "currentAmount" is omitted entirely (rather than sent as 0) when a regenerating resource is
+  // actually at 0, so every one of these needs a fallback rather than trusting the field's presence.
+  const resources: PlayerResources = {
+    stamina: hero?.stamina?.currentAmount ?? 0,
+    treasureBeach: hero?.progress?.treasureBeach?.stamina?.currentAmount ?? 0,
+    waves: hero?.progress?.waves?.stamina?.currentAmount ?? 0,
+    pvp: hero?.progress?.pvpState?.stamina?.currentAmount ?? 0,
+    guildBoss: hero?.progress?.guildState?.guildBoss?.attempts?.currentAmount ?? 0,
+    guildBossBomb: hero?.progress?.guildState?.guildBoss?.bombAttempts?.currentAmount ?? 0,
+    mowAmmo: hero?.resources?.groupedCurrencies?.global?.machinesOfWarAmmo ?? 0,
+  };
+
   return {
     board,
     heroes: units.filter((u) => characterIds.has(u.id)),
     machinesOfWar: units.filter((u) => mowIds.has(u.id)),
     adViewsRemaining: hero?.player?.adViews?.currentAmount ?? 0,
+    resources,
   };
 }
