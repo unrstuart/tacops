@@ -1,4 +1,10 @@
 import { fetchPlayerDataFromLoki } from "./loki-client";
+import { recordSighting } from "./track";
+import { renderInsightsPage } from "./insights";
+
+interface Env {
+  DB: D1Database;
+}
 
 interface RequestBody {
   environment: string;
@@ -7,12 +13,17 @@ interface RequestBody {
   snowId?: string;
 }
 
+interface TrackRequestBody {
+  userHash: string;
+}
+
 // Cloudflare serves a matching file out of the [assets] directory before this Worker ever runs
 // (the default when both `main` and `[assets]` are configured), so this only needs to handle the
-// one route that isn't a static file - everything else falling through here is a genuine 404.
+// routes that aren't static files - everything else falling through here is a genuine 404.
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
     if (url.pathname === "/api/fetch-player-data" && request.method === "POST") {
       const body = (await request.json()) as RequestBody;
       try {
@@ -27,6 +38,17 @@ export default {
         return Response.json({ error: `${error}` }, { status: 502 });
       }
     }
+
+    if (url.pathname === "/api/track" && request.method === "POST") {
+      const body = (await request.json()) as TrackRequestBody;
+      ctx.waitUntil(recordSighting(env.DB, body.userHash));
+      return new Response(null, { status: 204 });
+    }
+
+    if (url.pathname === "/insights" && request.method === "GET") {
+      return renderInsightsPage(env.DB);
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };
