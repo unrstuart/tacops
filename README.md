@@ -1,13 +1,16 @@
 # TacOps
 
-Reads your local Tacticus credentials, fetches your live account data, shows your current
-operations board and uses an integer-programming solver to suggest ways to dispatch the rest of
-your operations.
+Fetches your live Tacticus account data, shows your current operations board (as cards or a
+table), and uses an integer-programming solver to suggest which characters to send on the rest of
+your operations. Ships two ways: a [Tauri](https://tauri.app/) desktop app that reads your local
+Tacticus credentials automatically, and a website (see [Web version](#web-version)) where you
+enter them yourself each visit.
 
 ## Tech specs
 
-TacOps is a [Tauri](https://tauri.app/) desktop app: a Rust backend (`src-tauri/`) paired with a
-React/TypeScript frontend (`src/`), running in the OS's native webview.
+The desktop app is a Tauri app: a Rust backend (`src-tauri/`) paired with a React/TypeScript
+frontend (`src/`), running in the OS's native webview. The website shares that same `src/`
+frontend, swapping the Rust backend for a small serverless proxy (see below).
 
 ### Backend (`src-tauri/`)
 
@@ -17,8 +20,9 @@ React/TypeScript frontend (`src/`), running in the OS's native webview.
   [Credentials](#credentials) below) and exposes it to the frontend as the `find_credentials`
   Tauri command.
 - `src-tauri/src/loki.rs` — fetches the full player state (roster, resources,
-  expeditions board, ...), exposed as the `fetch_player_data` command. Device/hardware fingerprint
-  fields are intentionally left as generic fake values.
+  expeditions board, ...), exposed as the `fetch_player_data` command. Each outbound request has
+  a 20s timeout so a stalled connection fails instead of hanging forever. Device/hardware
+  fingerprint fields are intentionally left as generic fake values.
 - **macOS and Windows** — credential auto-discovery is implemented for both. Other platforms
   (e.g. Linux) aren't implemented.
 
@@ -26,17 +30,32 @@ React/TypeScript frontend (`src/`), running in the OS's native webview.
 
 - **React 19** + **TypeScript**, built with **Vite**, styled with **Tailwind CSS v4**
   (`@tailwindcss/vite`, CSS-first config — no `tailwind.config.js`).
-- `src/main.tsx` / `src/App.tsx` — entry point and top-level layout (environment toggle, GO
-  button, tabs).
-- `src/components/` — presentational `.tsx` components (tables, icon helpers, tabs, toggle).
-- `src/api/` — Tauri `invoke` calls and shared types.
+- `src/main.tsx` / `src/App.tsx` — entry point and top-level layout. `GO` fetches player data
+  (each RPC has its own timeout plus a countdown spinner) and renders the board immediately, then
+  runs the assignment solver in a background Web Worker so the UI never blocks — the board is
+  shown but disabled, under its own spinner overlay, until a suggestion (or a clear failure
+  message) comes back. The environment switcher, the table view, and the Characters/Machines of
+  War tabs are hidden by default (debug-only) — press "8" to reveal them.
+- `src/components/` — presentational `.tsx` components (tables, cards, icon helpers, tabs,
+  toggles, status indicators).
+- `src/api/` — Tauri `invoke` calls (wrapped with a per-call timeout, see `invoke-with-timeout.ts`)
+  and shared types.
+- `src/board/board-solver.ts` — the suggested-assignment solver: builds a mixed-integer program
+  (via `javascript-lp-solver`) over the open boards and available roster, solved in sequential
+  lexicographic passes (bonus-resource priority, then XP earned, then boards run, then minimizing
+  rank overkill) - each pass locks in the previous one's optimum before optimizing the next tier.
+  Runs inside `board-solver.worker.ts` (a Web Worker) so a hard instance can't freeze the UI; each
+  pass is time-boxed and checked for integrality, falling back to the last fully-valid pass (with
+  a warning) or, if nothing usable was found at all, clearing the suggestions and telling the user
+  to fill that board in manually.
 - `src/board/`, `src/characters/`, `src/rank/`, `src/rarity/`, `src/progression/`, `src/factions/`
   — pure `.ts` logic: decoding raw save-data fields (`progressionIndex`, `rank`, ...) into
   domain enums, resolving game-data ids (traits, damage profiles, factions, portraits, ...) to
   the matching asset URL, and view-model functions that turn raw API data into plain objects
   ready for a component to render.
-- `src/assets/` — game data (`character-data.json`, `ability-data.json`, `mow-data.json`) and
-  icon/portrait images, checked into the repo.
+- `src/assets/` — game data (`character-data.json`, `ability-data.json`, `mow-data.json`,
+  `operations-data.json` for human-readable operation names) and icon/portrait images, checked
+  into the repo.
 
 ### Building and running
 
@@ -58,14 +77,17 @@ and an NSIS `.exe` under the equivalent `bundle/` folders. It only builds for th
 running it on — Tauri doesn't support cross-compiling to another OS without extra toolchains, and
 that path is fragile enough that it isn't set up here.
 
-To get a build for the *other* OS without owning that hardware, use the GitHub Actions workflows
-instead: [`.github/workflows/build-macos.yml`](.github/workflows/build-macos.yml) and
-[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml). Both are triggered
-manually (Actions tab → pick the workflow → "Run workflow") and build natively on GitHub-hosted
-runners — macOS builds both `aarch64` and `x86_64` as separate installers, Windows builds the
-native MSI/NSIS installers. Both attach their output to the same **draft** GitHub Release (tag
-`app-v<version>`), so running either (or both) leaves you with one release page holding whichever
-installers you've built — nothing is published publicly until you choose to publish that draft.
+To get a build for the *other* OS without owning that hardware, use the GitHub Actions workflows:
+[`.github/workflows/build-macos.yml`](.github/workflows/build-macos.yml) and
+[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml). Both build natively
+on GitHub-hosted runners (macOS builds both `aarch64` and `x86_64` as separate installers, Windows
+builds the native MSI/NSIS installers) and run one of two ways:
+
+- **Publish a GitHub Release** through the normal UI (any tag, any notes) — both workflows fire
+  automatically and attach their installers directly to that release once they finish building.
+- **Run a workflow manually** from the Actions tab — builds the same way, but creates/updates its
+  own separate draft release (tag `app-v<version>`) instead of targeting one you've already
+  published.
 
 ### Credentials
 
@@ -78,6 +100,36 @@ wrote to disk. Which file it reads depends on the OS:
 | Windows | `%USERPROFILE%\AppData\LocalLow\Snowprint\Warhammer 40,000_ Tacticus\live-loki_user_data.json` |
 
 This file needs at least `userId` and `clientSecret`; `snowId` is used when present.
+
+## Web version
+
+TacOps also ships as a website, sharing the same `src/` React codebase as the desktop app rather
+than being a separate project - `isTauri()` (`@tauri-apps/api/core`) picks the transport at
+runtime:
+
+- **Credentials**: the desktop app auto-discovers them from disk (see above); the website instead
+  shows a `userId`/`clientSecret` form above the `GO` button (`App.tsx`), with `autoComplete`
+  attributes set so the browser's own password manager can offer to remember them. Nothing is
+  stored server-side - each visit starts blank unless the browser fills it in.
+- **Fetching player data**: the desktop app calls `fetch_player_data` in `src-tauri/src/loki.rs`
+  directly; a browser can't do that itself (the game's API doesn't send CORS headers), so the
+  website instead calls a same-origin route at `/api/fetch-player-data`, handled by the Worker
+  script in `worker/index.ts` (backed by `worker/loki-client.ts`) that replays the identical
+  APP_START → CONNECT → GET_PLAYER handshake server-side and returns the same JSON shape - kept in
+  sync with `loki.rs` by hand, since Tauri commands and a Cloudflare Worker can't share Rust/TS
+  code directly.
+- **Hosting**: a [Cloudflare Worker with static assets](https://developers.cloudflare.com/workers/static-assets/)
+  serves both the built frontend (`dist/`, via the `[assets]` block in `wrangler.toml`) and the
+  proxy (`worker/index.ts`) from one project, one domain - Cloudflare serves a matching static
+  file first for any request, falling through to the Worker script only for `/api/fetch-player-data`,
+  so the frontend's calls to its own proxy are same-origin and need no CORS configuration of their
+  own. The Cloudflare dashboard's own GitHub integration (Workers & Pages → Create application →
+  connect the repo) auto-deploys on every push to `master`, so there's no separate GitHub Actions
+  workflow for this - build command `npm run build`, deploy command `npx wrangler deploy`. No
+  environment variables or secrets need to be configured - the proxy is stateless.
+- **Local dev**: `npm run worker:dev` builds the frontend and runs `wrangler dev`, serving the
+  built assets and `/api/fetch-player-data` together locally (no Vite hot-reload in this mode -
+  use plain `npm run dev` for frontend-only iteration).
 
 ## Style requirements
 

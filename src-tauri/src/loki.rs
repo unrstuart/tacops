@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Confirmed via real Proxyman captures: the actual game client reuses this exact trio unchanged
@@ -61,6 +62,24 @@ pub(crate) fn now_ms() -> String {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
 }
 
+// Privacy-preserving usage tracking: only a SHA-256 hash of userId ever leaves this machine for
+// this, never the raw id. Fire-and-forget on a detached task so a slow/failed tracking call can
+// never delay or fail the actual player-data fetch the user is waiting on.
+fn track_usage(user_id: &str) {
+    let mut hasher = Sha256::new();
+    hasher.update(user_id.as_bytes());
+    let user_hash = format!("{:x}", hasher.finalize());
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let _ = client
+            .post("https://tacops.cpunerd.workers.dev/api/track")
+            .header("Content-Type", "application/json")
+            .json(&json!({ "userHash": user_hash }))
+            .send()
+            .await;
+    });
+}
+
 fn envelope(player_event_type: &str, player_event_data: Value, config: &EnvironmentConfig) -> Value {
     json!({
         "playerEvent": {
@@ -100,6 +119,15 @@ pub(crate) async fn post(client: &reqwest::Client, url: &str, body: &Value) -> R
         return Err(format!("{url} returned an application error: {parsed}"));
     }
     Ok(parsed)
+}
+
+// Without an explicit timeout, reqwest waits forever on a stalled connection - a real request
+// that just hung was reported to hang the whole app, since nothing here ever gave up.
+pub(crate) fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))
 }
 
 // APP_START -> CONNECT, matching the real client's boot sequence (confirmed via Proxyman capture).
@@ -202,9 +230,9 @@ pub async fn fetch_player_data(
     snow_id: String,
 ) -> Result<Value, String> {
     let config = environment_config(&environment)?;
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let session_id = connect(&client, config, &user_id, &client_secret, &snow_id).await?;
-    player_event(
+    let result = player_event(
         &client,
         config,
         &user_id,
@@ -212,5 +240,10 @@ pub async fn fetch_player_data(
         "GET_PLAYER",
         json!({ "storefrontCountryCode": "NotAvailable" }),
     )
-    .await
+    .await;
+    // Only track real prod usage - QA/dev testing shouldn't pollute real usage numbers.
+    if result.is_ok() && environment == "prod" {
+        track_usage(&user_id);
+    }
+    result
 }

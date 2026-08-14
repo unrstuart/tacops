@@ -31,3 +31,13 @@ export type RawUnit = {
   progressionIndex?: number;
   xpLevel?: number;
 } & Record<string, unknown>;
+
+export interface PlayerResources {
+  stamina: number;
+  treasureBeach: number;
+  waves: number;
+  pvp: number;
+  guildBoss: number;
+  guildBossBomb: number;
+  mowAmmo: number;
+}
