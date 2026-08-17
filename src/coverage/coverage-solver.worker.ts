@@ -9,6 +9,8 @@ export type CoverageSolveResponse =
       requestId: number;
       status: "success";
       minCoverFlat: Uint8Array;
+      requiredThresholdFlat: Uint8Array;
+      dpFullByCombo: Uint8Array;
       characterCount: number;
     }
   | {
@@ -20,8 +22,15 @@ export type CoverageSolveResponse =
 self.onmessage = (event: MessageEvent<CoverageSolveRequest>) => {
   const { requestId } = event.data;
   try {
-    const { minCoverFlat, characterCount } = solveCoverage();
-    const response: CoverageSolveResponse = { requestId, status: "success", minCoverFlat, characterCount };
+    const { minCoverFlat, requiredThresholdFlat, dpFullByCombo, characterCount } = solveCoverage();
+    const response: CoverageSolveResponse = {
+      requestId,
+      status: "success",
+      minCoverFlat,
+      requiredThresholdFlat,
+      dpFullByCombo,
+      characterCount,
+    };
     self.postMessage(response);
   } catch (error) {
     const response: CoverageSolveResponse = { requestId, status: "error", error: `${error}` };

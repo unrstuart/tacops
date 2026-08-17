@@ -10,14 +10,15 @@ export interface SolveRequest {
 }
 
 // "status" here is the worker-protocol outcome (did the call throw an unexpected exception);
-// "solveStatus" is solveBoardAssignment's own normal, non-exceptional outcome - "failed" (no
-// viable solution found) is still a "success" at this level, just with an empty assignment.
+// "solveStatus" is solveBoardAssignment's own normal, non-exceptional outcome - "heuristic" (the
+// LP couldn't find anything, so a greedy fallback was used instead) is still a "success" at this
+// level, just with an assignment that isn't guaranteed optimal.
 export type SolveResponse =
   | {
       requestId: number;
       status: "success";
       assignmentEntries: Array<[string, BoardSolution]>;
-      solveStatus: "ok" | "degraded" | "failed";
+      solveStatus: "ok" | "degraded" | "heuristic";
       message?: string;
     }
   | {

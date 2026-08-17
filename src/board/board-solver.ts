@@ -2,7 +2,7 @@ import solver, { type Model as LpModel, type SolveResult } from "javascript-lp-s
 import { BoardFilter, boardMinRank, type RankedUnit } from "./board-filter";
 import { characterSatisfiesObjective } from "./objective-eligibility";
 import { rewardAmount, type ResourceKey } from "./reward-amount";
-import { estimateXpGain } from "./xp-gain";
+import { estimateXpGain, isXpCapped } from "./xp-gain";
 import { requiredAlliance } from "./board-alliance";
 import { entryRarity, entryIsUnavailable } from "./board-view-model";
 import { intToRank } from "../rank/rank.mapper";
@@ -13,7 +13,7 @@ import { getCharacterProfile, type CharacterProfile } from "../characters/charac
 import { isCharacterId } from "../api/fetch-player-data";
 import type { BonusObjective, ExpeditionBoardEntry, RawUnit } from "../api/types";
 
-interface RosterCharacter extends RankedUnit {
+export interface RosterCharacter extends RankedUnit {
   id: string;
   xpLevel: number;
   profile: CharacterProfile;
@@ -230,11 +230,9 @@ function isIntegralResult(model: LpModel, result: SolveResult): boolean {
   return true;
 }
 
-interface PassesResult {
-  result: SolveResult | null;
-  status: "ok" | "degraded" | "failed";
-  message?: string;
-}
+type PassesResult =
+  | { result: SolveResult; status: "ok" | "degraded"; message?: string }
+  | { result: null; status: "failed"; message: string };
 
 // If a later pass can't finish in time, falling back to the last pass that DID complete is still
 // a fully valid, feasible assignment - just not optimized for the lower-priority tiers beyond
@@ -313,6 +311,134 @@ export function findMinimalRequiredSubset(assignedIds: string[], groupRequiremen
   return best ?? new Set(assignedIds);
 }
 
+// Shared "who to prefer when there's no objective-coverage signal to go on" ordering: uncapped
+// units first (deploying an XP-capped unit wastes a growth opportunity when an uncapped
+// alternative exists - mirrors the LP's own xpGain optimization pass), then by Rank descending.
+// Negative return means `a` is preferred over `b`, matching Array.prototype.sort's contract.
+function rankFillComparator(a: RosterCharacter, b: RosterCharacter): number {
+  const aCapped = isXpCapped(a.rarity, a.xpLevel) ? 1 : 0;
+  const bCapped = isXpCapped(b.rarity, b.xpLevel) ? 1 : 0;
+  if (aCapped !== bCapped) return aCapped - bCapped;
+  return b.rank - a.rank;
+}
+
+// Fallback for when runPasses() can't produce any usable LP result at all (see
+// solveBoardAssignment) - processes boards mythic-first so scarce characters go to the
+// highest-value boards, greedily assigns whichever available unit covers the most still-uncovered
+// objective groups (a unit can cover several DIFFERENT groups in one pick, same as the LP's own
+// group constraints, but never more than one slot of any single duplicated group), and falls back
+// to a plain rank-based fill (deprioritizing XP-capped units) for boards it can't fully solve that
+// way. Deterministic and fast (no LP), but not guaranteed optimal - callers must surface that
+// clearly rather than presenting it as an equivalent result.
+export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: RosterCharacter[]): BoardAssignmentResult {
+  const available = new Set(roster.map((unit) => unit.id));
+  const sortedBoards = [...openBoards].sort((a, b) => entryRarity(b) - entryRarity(a));
+  const solutions: BoardAssignmentResult = new Map();
+  const unableBoards: ExpeditionBoardEntry[] = [];
+
+  function eligibleAvailableRoster(entry: ExpeditionBoardEntry): RosterCharacter[] {
+    const rarity = entryRarity(entry);
+    const allianceRequirement = requiredAlliance(entry.category);
+    return roster.filter((unit) => available.has(unit.id) && isEligibleForBoard(unit, rarity, allianceRequirement));
+  }
+
+  function fillSlots(chosen: RosterCharacter[], pool: RosterCharacter[], slots: number): RosterCharacter[] {
+    const chosenIds = new Set(chosen.map((u) => u.id));
+    const padding = pool
+      .filter((u) => !chosenIds.has(u.id))
+      .sort(rankFillComparator)
+      .slice(0, Math.max(0, slots - chosen.length));
+    return [...chosen, ...padding];
+  }
+
+  // Phase A: objective-first greedy fill, highest rarity board first.
+  for (const board of sortedBoards) {
+    const eligible = eligibleAvailableRoster(board);
+    const groups = groupObjectives(board.bonusObjectives).map((g) => ({ ...g, remaining: g.count }));
+    const assigned: RosterCharacter[] = [];
+    const tentativelyUsed = new Set<string>();
+
+    while (assigned.length < board.participants) {
+      let best: RosterCharacter | undefined;
+      let bestScore = 0;
+      for (const unit of eligible) {
+        if (tentativelyUsed.has(unit.id)) continue;
+        const score = groups.reduce(
+          (n, g) => (g.remaining > 0 && characterSatisfiesObjective(unit.profile, g.objective) ? n + 1 : n),
+          0,
+        );
+        if (score === 0) continue;
+        if (!best || score > bestScore || (score === bestScore && rankFillComparator(unit, best) < 0)) {
+          best = unit;
+          bestScore = score;
+        }
+      }
+      if (!best) break; // no available unit can make any more progress
+      assigned.push(best);
+      tentativelyUsed.add(best.id);
+      for (const group of groups) {
+        if (group.remaining > 0 && characterSatisfiesObjective(best.profile, group.objective)) {
+          group.remaining -= 1;
+        }
+      }
+      if (groups.every((g) => g.remaining === 0)) break;
+    }
+
+    if (groups.every((g) => g.remaining === 0)) {
+      const filled = fillSlots(assigned, eligible, board.participants);
+      if (filled.length === board.participants) {
+        for (const unit of filled) available.delete(unit.id);
+        const groupRequirements: GroupRequirement[] = groups.map((group) => ({
+          key: group.key,
+          count: group.count,
+          eligibleAssignedIds: assigned.filter((u) => characterSatisfiesObjective(u.profile, group.objective)).map((u) => u.id),
+        }));
+        const required = findMinimalRequiredSubset(
+          assigned.map((u) => u.id),
+          groupRequirements,
+        );
+        solutions.set(board.expeditionId, {
+          expeditionId: board.expeditionId,
+          run: true,
+          bonusCompleted: true,
+          requiredCharacterIds: [...required],
+          optionalCharacterIds: filled.map((u) => u.id).filter((id) => !required.has(id)),
+        });
+        continue;
+      }
+      // Objectives were covered, but there weren't enough eligible bodies left to also hit the
+      // exact participant count - falls through to the unable bin like any other failure.
+    }
+    unableBoards.push(board);
+  }
+
+  // Phase B: rank-based fill for anything Phase A couldn't fully solve, still mythic-first.
+  for (const board of unableBoards) {
+    const eligible = eligibleAvailableRoster(board);
+    const chosen = [...eligible].sort(rankFillComparator).slice(0, board.participants);
+    if (chosen.length === board.participants) {
+      for (const unit of chosen) available.delete(unit.id);
+      solutions.set(board.expeditionId, {
+        expeditionId: board.expeditionId,
+        run: true,
+        bonusCompleted: false,
+        requiredCharacterIds: [],
+        optionalCharacterIds: chosen.map((u) => u.id),
+      });
+    } else {
+      solutions.set(board.expeditionId, {
+        expeditionId: board.expeditionId,
+        run: false,
+        bonusCompleted: false,
+        requiredCharacterIds: [],
+        optionalCharacterIds: [],
+      });
+    }
+  }
+
+  return solutions;
+}
+
 function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: string[]): BoardAssignmentResult {
   const isOne = (name: string) => Math.round(Number(result[name] ?? 0)) === 1;
 
@@ -366,7 +492,7 @@ function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: s
 
 export interface SolveBoardAssignmentResult {
   assignment: BoardAssignmentResult;
-  status: "ok" | "degraded" | "failed";
+  status: "ok" | "degraded" | "heuristic";
   message?: string;
 }
 
@@ -388,15 +514,22 @@ export function solveBoardAssignment(
     `[board-solver] solving: ${openBoards.length} open board(s), ${roster.length} roster character(s), ${variableCount} variable(s), ${constraintCount} constraint(s)`,
   );
   const solveStartedAt = performance.now();
-  const { result: finalResult, status, message } = runPasses(built.model);
+  const passesResult = runPasses(built.model);
   console.log(`[board-solver] total solve time: ${Math.round(performance.now() - solveStartedAt)}ms`);
-  if (finalResult === null) {
-    return { assignment: new Map(), status, message };
+  if (passesResult.result === null) {
+    console.warn("[board-solver] LP failed entirely - falling back to the greedy heuristic solver");
+    const assignment = solveGreedyFallback(openBoards, roster);
+    return {
+      assignment,
+      status: "heuristic",
+      message:
+        "We couldn't find a mathematically optimal solution in time, so this is a best-effort heuristic assignment - please double-check it before deploying.",
+    };
   }
   const assignment = extractSolution(
     built,
-    finalResult,
+    passesResult.result,
     openBoards.map((entry) => entry.expeditionId),
   );
-  return { assignment, status, message };
+  return { assignment, status: passesResult.status, message: passesResult.message };
 }

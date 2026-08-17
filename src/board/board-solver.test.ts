@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { findMinimalRequiredSubset, type GroupRequirement } from "./board-solver";
+import { findMinimalRequiredSubset, solveGreedyFallback, type GroupRequirement, type RosterCharacter } from "./board-solver";
+import { Rank } from "../rank/rank.enum";
+import { Rarity } from "../rarity/rarity.enum";
+import type { CharacterProfile } from "../characters/character-profile";
+import type { ExpeditionBoardEntry } from "../api/types";
 
 describe("findMinimalRequiredSubset", () => {
   it("excludes a character whose only objective is already covered by someone else", () => {
@@ -40,5 +44,140 @@ describe("findMinimalRequiredSubset", () => {
     const required = findMinimalRequiredSubset(assignedIds, []);
 
     expect(required).toEqual(new Set());
+  });
+});
+
+function profile(overrides: Partial<CharacterProfile> = {}): CharacterProfile {
+  return {
+    name: "Test",
+    damageProfiles: [],
+    traits: [],
+    alliance: "Imperial",
+    faction: "Ultramarines",
+    hasRangedAttack: false,
+    ...overrides,
+  };
+}
+
+function character(id: string, overrides: Partial<RosterCharacter> = {}): RosterCharacter {
+  return {
+    id,
+    rank: Rank.Gold1,
+    rarity: Rarity.Epic,
+    xpLevel: 0,
+    profile: profile(),
+    ...overrides,
+  };
+}
+
+function board(overrides: Partial<ExpeditionBoardEntry> = {}): ExpeditionBoardEntry {
+  return {
+    expeditionId: overrides.expeditionId ?? "exp",
+    id: "op",
+    category: "all_vanguard",
+    rarity: "Common",
+    participants: 1,
+    duration: 3600,
+    bonusObjectives: [],
+    baseRewards: [],
+    bonusRewards: [],
+    status: "Available",
+    ...overrides,
+  };
+}
+
+describe("solveGreedyFallback", () => {
+  it("gives higher-rarity boards first pick of a contested character", () => {
+    // Only "flyer" satisfies Trait:Flying and is rank/rarity-eligible for both boards; "filler" is
+    // only eligible for the Common board. Boards are processed mythic-first, so the Mythic board
+    // should claim "flyer" for its bonus, leaving the Common board to fall back to a plain fill.
+    const flyer = character("flyer", {
+      rank: Rank.Adamantine2,
+      rarity: Rarity.Mythic,
+      profile: profile({ traits: ["Flying"] }),
+    });
+    const filler = character("filler", { rank: Rank.Iron1, rarity: Rarity.Common });
+    const objectives = [{ objectiveType: "Trait", objectiveTarget: "Flying" }];
+    const mythicBoard = board({ expeditionId: "mythic", rarity: "Mythic", bonusObjectives: objectives });
+    const commonBoard = board({ expeditionId: "common", rarity: "Common", bonusObjectives: objectives });
+
+    const result = solveGreedyFallback([commonBoard, mythicBoard], [flyer, filler]);
+
+    const mythicSolution = result.get("mythic")!;
+    expect(mythicSolution.bonusCompleted).toBe(true);
+    expect(mythicSolution.requiredCharacterIds).toEqual(["flyer"]);
+
+    const commonSolution = result.get("common")!;
+    expect(commonSolution.bonusCompleted).toBe(false);
+    expect(commonSolution.optionalCharacterIds).toEqual(["filler"]);
+    expect([...commonSolution.requiredCharacterIds, ...commonSolution.optionalCharacterIds]).not.toContain("flyer");
+  });
+
+  it("credits one character for covering two different objectives in a single pick", () => {
+    const duo = character("duo", { profile: profile({ traits: ["Flying"], damageProfiles: ["Bolter"] }) });
+    const singleBoard = board({
+      bonusObjectives: [
+        { objectiveType: "Trait", objectiveTarget: "Flying" },
+        { objectiveType: "DamageType", objectiveTarget: "Bolter" },
+      ],
+    });
+
+    const result = solveGreedyFallback([singleBoard], [duo]);
+
+    const solution = result.get("exp")!;
+    expect(solution.bonusCompleted).toBe(true);
+    expect(solution.requiredCharacterIds).toEqual(["duo"]);
+    expect(solution.optionalCharacterIds).toEqual([]);
+  });
+
+  it("falls back to a rank fill that prefers an uncapped character over a higher-rank capped one", () => {
+    const cappedHigh = character("cappedHigh", { rank: Rank.Adamantine2, rarity: Rarity.Mythic, xpLevel: 60 }); // xpLevelCap[Mythic] = 60
+    const uncappedLow = character("uncappedLow", { rank: Rank.Iron1, rarity: Rarity.Common, xpLevel: 0 });
+    const unsolvableBoard = board({ bonusObjectives: [{ objectiveType: "Faction", objectiveTarget: "Necrons" }] });
+
+    const result = solveGreedyFallback([unsolvableBoard], [cappedHigh, uncappedLow]);
+
+    const solution = result.get("exp")!;
+    expect(solution.bonusCompleted).toBe(false);
+    expect(solution.run).toBe(true);
+    expect(solution.optionalCharacterIds).toEqual(["uncappedLow"]);
+  });
+
+  it("still uses a capped character when there aren't enough uncapped bodies to fill the slots", () => {
+    const cappedHigh = character("cappedHigh", { rank: Rank.Adamantine2, rarity: Rarity.Mythic, xpLevel: 60 });
+    const uncappedLow = character("uncappedLow", { rank: Rank.Iron1, rarity: Rarity.Common, xpLevel: 0 });
+    const unsolvableBoard = board({
+      participants: 2,
+      bonusObjectives: [{ objectiveType: "Faction", objectiveTarget: "Necrons" }],
+    });
+
+    const result = solveGreedyFallback([unsolvableBoard], [cappedHigh, uncappedLow]);
+
+    const solution = result.get("exp")!;
+    expect(solution.run).toBe(true);
+    expect(new Set(solution.optionalCharacterIds)).toEqual(new Set(["cappedHigh", "uncappedLow"]));
+  });
+
+  it("marks a board unable to run when too few eligible characters remain for its slots", () => {
+    const eligible = character("eligible", { rank: Rank.Adamantine2, rarity: Rarity.Mythic });
+    const tooWeak1 = character("tooWeak1", { rank: Rank.Iron1, rarity: Rarity.Common });
+    const tooWeak2 = character("tooWeak2", { rank: Rank.Iron1, rarity: Rarity.Common });
+    const mythicBoard = board({ rarity: "Mythic", participants: 3 });
+
+    const result = solveGreedyFallback([mythicBoard], [eligible, tooWeak1, tooWeak2]);
+
+    expect(result.get("exp")!.run).toBe(false);
+  });
+
+  it("leaves a redundant padding character optional rather than required", () => {
+    const solver = character("solver", { profile: profile({ traits: ["Flying"] }) });
+    const filler = character("filler");
+    const twoSlotBoard = board({ participants: 2, bonusObjectives: [{ objectiveType: "Trait", objectiveTarget: "Flying" }] });
+
+    const result = solveGreedyFallback([twoSlotBoard], [solver, filler]);
+
+    const solution = result.get("exp")!;
+    expect(solution.requiredCharacterIds).toEqual(["solver"]);
+    expect(solution.optionalCharacterIds).toEqual(["filler"]);
   });
 });

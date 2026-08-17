@@ -12,6 +12,8 @@ const selectClass = "rounded border border-black/20 bg-white px-1 py-0.5 text-sm
 
 interface CoverageData {
   minCoverFlat: Uint8Array;
+  requiredThresholdFlat: Uint8Array;
+  dpFullByCombo: Uint8Array;
   characterCount: number;
 }
 
@@ -34,7 +36,12 @@ export function BoardCoverageTab() {
     worker.onmessage = (event: MessageEvent<CoverageSolveResponse>) => {
       if (event.data.requestId !== requestIdRef.current) return; // stale, ignore
       if (event.data.status === "success") {
-        setData({ minCoverFlat: event.data.minCoverFlat, characterCount: event.data.characterCount });
+        setData({
+          minCoverFlat: event.data.minCoverFlat,
+          requiredThresholdFlat: event.data.requiredThresholdFlat,
+          dpFullByCombo: event.data.dpFullByCombo,
+          characterCount: event.data.characterCount,
+        });
         setError(null);
       } else {
         setError(event.data.error);
@@ -53,7 +60,7 @@ export function BoardCoverageTab() {
 
   const result = useMemo(() => {
     if (!data) return null;
-    return computeCoverageResult(filters, data.minCoverFlat, data.characterCount);
+    return computeCoverageResult(filters, data.minCoverFlat, data.requiredThresholdFlat, data.dpFullByCombo, data.characterCount);
   }, [data, filters]);
 
   return (
@@ -112,6 +119,7 @@ export function BoardCoverageTab() {
           <CharacterCoverageTable
             catalog={catalog}
             counts={result.characterCounts}
+            requiredCounts={result.requiredCounts}
             filters={filters}
             minCoverFlat={data!.minCoverFlat}
             characterCount={data!.characterCount}

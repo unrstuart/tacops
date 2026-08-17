@@ -180,6 +180,17 @@ interface RelevantCharacter {
   eligibleGroupsMask: number;
 }
 
+export interface ComboSolveResult {
+  minCoverByCharacterIndex: Uint8Array;
+  // Minimum active-contributor count achievable using every OTHER relevant character - i.e. what
+  // the combo's cover cost becomes if this one specific character is taken off the table entirely.
+  // UNREACHABLE if nobody else can replace it.
+  requiredThresholdByCharacterIndex: Uint8Array;
+  // The combo's true unconstrained minimum cover size (0 if it has no objectives, UNREACHABLE if
+  // nobody in the roster can help at all).
+  dpFull: number;
+}
+
 // For every character with a nonzero eligibility mask against this combo, computes the minimum
 // number of ACTIVELY CONTRIBUTING characters (including that character) needed to cover every
 // objective slot. Characters that touch none of this combo's conditions are left at UNREACHABLE -
@@ -188,11 +199,12 @@ export function solveCombo(
   objectives: BonusObjective[],
   profiles: CharacterProfile[],
   requiredAlliance?: string,
-): Uint8Array {
+): ComboSolveResult {
   const { fullMask, groupBitmasks, groupCondition } = buildComboGroups(objectives);
   const minCoverByCharacterIndex = new Uint8Array(profiles.length).fill(UNREACHABLE);
+  const requiredThresholdByCharacterIndex = new Uint8Array(profiles.length).fill(UNREACHABLE);
   if (fullMask === 0) {
-    return minCoverByCharacterIndex; // no objectives in this combo (shouldn't occur in real data)
+    return { minCoverByCharacterIndex, requiredThresholdByCharacterIndex, dpFull: 0 }; // no objectives (shouldn't occur in real data)
   }
 
   const relevant: RelevantCharacter[] = [];
@@ -212,11 +224,12 @@ export function solveCombo(
     }
   });
   if (relevant.length === 0) {
-    return minCoverByCharacterIndex; // nobody in the roster satisfies any condition here
+    return { minCoverByCharacterIndex, requiredThresholdByCharacterIndex, dpFull: UNREACHABLE }; // nobody satisfies anything here
   }
 
   const distinctMasks = [...new Set(relevant.map((c) => c.eligibleGroupsMask))];
 
+  let dpFull = UNREACHABLE;
   for (const candidate of relevant) {
     const initialMask = contribution(0, candidate.eligibleGroupsMask, groupBitmasks);
     const dpFromCandidate = computeDpFrom(distinctMasks, groupBitmasks, fullMask, initialMask);
@@ -226,13 +239,29 @@ export function solveCombo(
     if (total < minCoverByCharacterIndex[candidate.index]) {
       minCoverByCharacterIndex[candidate.index] = total;
     }
+    if (total < dpFull) {
+      dpFull = total;
+    }
   }
 
-  return minCoverByCharacterIndex;
+  // The DP that finds the global optimum already tells us who's usable; a character is REQUIRED
+  // (not just usable) only if the combo becomes unreachable, or needs strictly more characters,
+  // once that specific individual is excluded from the candidate pool.
+  for (const candidate of relevant) {
+    const masksExcludingCandidate = [
+      ...new Set(relevant.filter((c) => c.index !== candidate.index).map((c) => c.eligibleGroupsMask)),
+    ];
+    const dpWithoutCandidate = computeDpFrom(masksExcludingCandidate, groupBitmasks, fullMask, 0);
+    requiredThresholdByCharacterIndex[candidate.index] = dpWithoutCandidate[fullMask];
+  }
+
+  return { minCoverByCharacterIndex, requiredThresholdByCharacterIndex, dpFull };
 }
 
 export interface CoverageSolution {
   minCoverFlat: Uint8Array; // row-major: comboIndex * characterCount + charIndex
+  requiredThresholdFlat: Uint8Array; // same layout as minCoverFlat
+  dpFullByCombo: Uint8Array; // one entry per combo
   characterCount: number;
 }
 
@@ -243,11 +272,20 @@ export function solveCoverage(): CoverageSolution {
   const opById = new Map(operations.map((op) => [op.id, op]));
 
   const minCoverFlat = new Uint8Array(combos.length * catalog.length).fill(UNREACHABLE);
+  const requiredThresholdFlat = new Uint8Array(combos.length * catalog.length).fill(UNREACHABLE);
+  const dpFullByCombo = new Uint8Array(combos.length).fill(UNREACHABLE);
   combos.forEach((combo, comboIndex) => {
     const op = opById.get(combo.opId);
-    const minCoverByCharacterIndex = solveCombo(combo.objectives, profiles, op?.alliance);
-    minCoverFlat.set(minCoverByCharacterIndex, comboIndex * catalog.length);
+    const { minCoverByCharacterIndex, requiredThresholdByCharacterIndex, dpFull } = solveCombo(
+      combo.objectives,
+      profiles,
+      op?.alliance,
+    );
+    const offset = comboIndex * catalog.length;
+    minCoverFlat.set(minCoverByCharacterIndex, offset);
+    requiredThresholdFlat.set(requiredThresholdByCharacterIndex, offset);
+    dpFullByCombo[comboIndex] = dpFull;
   });
 
-  return { minCoverFlat, characterCount: catalog.length };
+  return { minCoverFlat, requiredThresholdFlat, dpFullByCombo, characterCount: catalog.length };
 }

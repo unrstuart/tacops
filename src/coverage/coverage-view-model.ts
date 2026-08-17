@@ -43,7 +43,8 @@ function levelsForOp(op: OperationRecord, filters: CoverageFilters): number[] {
 
 export interface CoverageResult {
   totalInstances: number;
-  characterCounts: number[]; // index-aligned with the character catalog
+  characterCounts: number[]; // "usable" count, index-aligned with the character catalog
+  requiredCounts: number[]; // "uniquely required" count, index-aligned with the character catalog
 }
 
 // Above-the-table total: pure filter arithmetic (level/rarity/alliance only), independent of
@@ -51,6 +52,8 @@ export interface CoverageResult {
 export function computeCoverageResult(
   filters: CoverageFilters,
   minCoverFlat: Uint8Array,
+  requiredThresholdFlat: Uint8Array,
+  dpFullByCombo: Uint8Array,
   characterCount: number,
 ): CoverageResult {
   const operations = getOperations();
@@ -66,6 +69,7 @@ export function computeCoverageResult(
   }
 
   const characterCounts = new Array<number>(characterCount).fill(0);
+  const requiredCounts = new Array<number>(characterCount).fill(0);
   const combos = enumerateCombos(operations);
   combos.forEach((combo, comboIndex) => {
     const op = opById.get(combo.opId);
@@ -74,18 +78,34 @@ export function computeCoverageResult(
     if (levels === 0) return;
 
     const rowOffset = comboIndex * characterCount;
+    const dpFull = dpFullByCombo[comboIndex];
     for (let charIndex = 0; charIndex < characterCount; charIndex++) {
       const minCover = minCoverFlat[rowOffset + charIndex];
-      if (minCover === UNREACHABLE || minCover > op.participantsMax) continue;
-      const bFloor = Math.max(minCover, op.participantsMin);
-      const contributionCount = op.participantsMax - bFloor + 1;
-      if (contributionCount > 0) {
-        characterCounts[charIndex] += levels * contributionCount;
+      if (minCover === UNREACHABLE) continue; // never a candidate for this combo at all
+
+      if (minCover <= op.participantsMax) {
+        const bFloor = Math.max(minCover, op.participantsMin);
+        const contributionCount = op.participantsMax - bFloor + 1;
+        if (contributionCount > 0) {
+          characterCounts[charIndex] += levels * contributionCount;
+        }
+      }
+
+      // Required for squad size b iff the combo is solvable at all (dpFull <= b) and excluding
+      // this character specifically pushes the minimum needed above b (requiredThreshold > b).
+      // requiredThreshold's UNREACHABLE sentinel (255) behaves like +Infinity in this min/max
+      // arithmetic without needing a special case, since real participant counts are tiny.
+      const requiredThreshold = requiredThresholdFlat[rowOffset + charIndex];
+      const requiredLo = Math.max(dpFull, op.participantsMin);
+      const requiredHi = Math.min(op.participantsMax, requiredThreshold - 1);
+      const requiredCount = requiredHi - requiredLo + 1;
+      if (requiredCount > 0) {
+        requiredCounts[charIndex] += levels * requiredCount;
       }
     }
   });
 
-  return { totalInstances, characterCounts };
+  return { totalInstances, characterCounts, requiredCounts };
 }
 
 export interface DetailRow {
