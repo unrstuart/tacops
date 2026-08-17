@@ -37,6 +37,8 @@ export interface PlayerResources {
   treasureBeach: number;
   waves: number;
   pvp: number;
+  pvpPosition: number | null;
+  pvpGroupSize: number | null;
   guildBoss: number;
   guildBossBomb: number;
   mowAmmo: number;

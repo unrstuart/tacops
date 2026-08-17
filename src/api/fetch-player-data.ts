@@ -59,6 +59,10 @@ export async function fetchPlayerData(
     treasureBeach: hero?.progress?.treasureBeach?.stamina?.currentAmount ?? 0,
     waves: hero?.progress?.waves?.stamina?.currentAmount ?? 0,
     pvp: hero?.progress?.pvpState?.stamina?.currentAmount ?? 0,
+    // Absent between seasons - null (not 0) so the UI can tell "not currently ranked" apart from
+    // an actual position/size of 0.
+    pvpPosition: hero?.progress?.pvpState?.playerPosition ?? null,
+    pvpGroupSize: hero?.progress?.pvpState?.actualGroupSize ?? null,
     guildBoss: hero?.progress?.guildState?.guildBoss?.attempts?.currentAmount ?? 0,
     guildBossBomb: hero?.progress?.guildState?.guildBoss?.bombAttempts?.currentAmount ?? 0,
     mowAmmo: hero?.resources?.groupedCurrencies?.global?.machinesOfWarAmmo ?? 0,
