@@ -9,6 +9,7 @@ import { OperationsTable } from "./components/OperationsTable";
 import { OperationsCards } from "./components/OperationsCards";
 import { CharactersTable } from "./components/CharactersTable";
 import { MowTable } from "./components/MowTable";
+import { BoardCoverageTab } from "./components/BoardCoverageTab";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { ResourceTokens } from "./components/ResourceTokens";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "operations", label: "Operations" },
   { id: "characters", label: "Characters" },
   { id: "mows", label: "Machines of War" },
+  { id: "coverage", label: "Board Coverage" },
 ];
 
 const FETCH_COUNTDOWN_SECONDS = 60;
@@ -58,7 +60,7 @@ export function App() {
   const [assignment, setAssignment] = useState<BoardAssignmentResult>(new Map());
   const [solverError, setSolverError] = useState<string>();
   const [solverDegradedReason, setSolverDegradedReason] = useState<string>();
-  const [solverFailedReason, setSolverFailedReason] = useState<string>();
+  const [solverHeuristicReason, setSolverHeuristicReason] = useState<string>();
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
 
@@ -79,7 +81,7 @@ export function App() {
       setSolverState("idle");
       setSolverError(undefined);
       setSolverDegradedReason(undefined);
-      setSolverFailedReason(undefined);
+      setSolverHeuristicReason(undefined);
       return;
     }
 
@@ -95,13 +97,13 @@ export function App() {
       if (event.data.status === "success") {
         setAssignment(new Map(event.data.assignmentEntries));
         setSolverDegradedReason(event.data.solveStatus === "degraded" ? event.data.message : undefined);
-        setSolverFailedReason(event.data.solveStatus === "failed" ? event.data.message : undefined);
+        setSolverHeuristicReason(event.data.solveStatus === "heuristic" ? event.data.message : undefined);
         setSolverError(undefined);
         setSolverState("success");
       } else {
         setSolverError(event.data.error);
         setSolverDegradedReason(undefined);
-        setSolverFailedReason(undefined);
+        setSolverHeuristicReason(undefined);
         setSolverState("error");
       }
     };
@@ -109,7 +111,7 @@ export function App() {
     setSolverState("solving");
     setSolverError(undefined);
     setSolverDegradedReason(undefined);
-    setSolverFailedReason(undefined);
+    setSolverHeuristicReason(undefined);
     const request: SolveRequest = { requestId, board, heroes, priorityOrder };
     worker.postMessage(request);
   }, [board, heroes, priorityOrder]);
@@ -273,8 +275,10 @@ export function App() {
                     Couldn't compute a suggested assignment: {solverError}
                   </p>
                 )}
-                {solverFailedReason && (
-                  <p className="mt-2 text-red-600 dark:text-red-400">{solverFailedReason}</p>
+                {solverHeuristicReason && (
+                  <p className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-700 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                    {solverHeuristicReason}
+                  </p>
                 )}
                 {solverDegradedReason && (
                   <p className="mt-2 text-amber-600 dark:text-amber-400">{solverDegradedReason}</p>
@@ -313,6 +317,7 @@ export function App() {
         )}
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}
         {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
+        {activeTab === "coverage" && <BoardCoverageTab />}
       </div>
     </main>
   );
