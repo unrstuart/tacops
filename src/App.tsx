@@ -9,6 +9,7 @@ import { OperationsTable } from "./components/OperationsTable";
 import { OperationsCards } from "./components/OperationsCards";
 import { CharactersTable } from "./components/CharactersTable";
 import { MowTable } from "./components/MowTable";
+import { BoardCoverageTab } from "./components/BoardCoverageTab";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { ResourceTokens } from "./components/ResourceTokens";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "operations", label: "Operations" },
   { id: "characters", label: "Characters" },
   { id: "mows", label: "Machines of War" },
+  { id: "coverage", label: "Board Coverage" },
 ];
 
 const FETCH_COUNTDOWN_SECONDS = 60;
@@ -313,6 +315,7 @@ export function App() {
         )}
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}
         {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
+        {activeTab === "coverage" && <BoardCoverageTab />}
       </div>
     </main>
   );

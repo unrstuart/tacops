@@ -67,13 +67,13 @@ function overkillCost(unit: RankedUnit, boardRarity: Rarity): number {
   return unit.rank - minRank;
 }
 
-interface ObjectiveGroup {
+export interface ObjectiveGroup {
   key: string;
   objective: BonusObjective;
   count: number;
 }
 
-function groupObjectives(objectives: BonusObjective[]): ObjectiveGroup[] {
+export function groupObjectives(objectives: BonusObjective[]): ObjectiveGroup[] {
   const groups = new Map<string, ObjectiveGroup>();
   for (const objective of objectives) {
     const key = `${objective.objectiveType}::${objective.objectiveTarget ?? ""}`;
