@@ -105,9 +105,12 @@ export function ResourceTokens({ resources, adViewsRemaining }: ResourceTokensPr
   ];
 
   return (
-    <div className="flex flex-wrap items-start justify-center gap-4">
+    <div className="flex flex-wrap items-start justify-center gap-3">
       {entries.map((entry) => (
-        <div key={entry.key} className="flex flex-col items-center gap-1">
+        <div
+          key={entry.key}
+          className="flex h-36 w-44 flex-col items-center gap-1 rounded-lg border border-black/10 bg-white/60 p-2 text-center dark:border-white/15 dark:bg-white/5"
+        >
           <Icon src={entry.icon} title={entry.label} />
           <span className="text-sm font-medium">{entry.value}</span>
           {entry.subtext?.map((line, i) => (
