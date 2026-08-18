@@ -3,6 +3,14 @@ import { invokeWithTimeout } from "./invoke-with-timeout";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import characterData from "../assets/character-data.json";
 import mowData from "../assets/mow-data.json";
+import {
+  computeGuildBossBombTimings,
+  computeGuildBossTimings,
+  computePvpTimings,
+  computeStaminaTimings,
+  computeTreasureBeachTimings,
+  computeWavesTimings,
+} from "./resource-regen";
 import type { Credentials, Environment, ExpeditionBoardEntry, PlayerResources, RawUnit } from "./types";
 
 const characterIds = new Set((characterData as { id: string }[]).map((c) => c.id));
@@ -52,19 +60,45 @@ export async function fetchPlayerData(
     ...(data as object),
   }));
 
+  const powerLevel = hero?.player?.powerLevel;
+  const staminaTimings = computeStaminaTimings(hero?.stamina, powerLevel);
+  const wavesTimings = computeWavesTimings(hero?.progress?.waves?.stamina);
+  const treasureBeachTimings = computeTreasureBeachTimings(hero?.progress?.treasureBeach?.stamina);
+  const guildBossTimings = computeGuildBossTimings(hero?.progress?.guildState?.guildBoss?.attempts);
+  const guildBossBombTimings = computeGuildBossBombTimings(hero?.progress?.guildState?.guildBoss?.bombAttempts);
+  const pvpTimings = computePvpTimings(
+    hero?.progress?.pvpState?.stamina,
+    hero?.progress?.pvpState?.staminaRegenUntil ?? null,
+  );
+
   // "currentAmount" is omitted entirely (rather than sent as 0) when a regenerating resource is
   // actually at 0, so every one of these needs a fallback rather than trusting the field's presence.
   const resources: PlayerResources = {
     stamina: hero?.stamina?.currentAmount ?? 0,
+    staminaNextTokenAt: staminaTimings.nextTokenAt,
+    staminaCapAt: staminaTimings.capAt,
     treasureBeach: hero?.progress?.treasureBeach?.stamina?.currentAmount ?? 0,
+    treasureBeachNextTokenAt: treasureBeachTimings.nextTokenAt,
+    treasureBeachCapAt: treasureBeachTimings.capAt,
     waves: hero?.progress?.waves?.stamina?.currentAmount ?? 0,
+    wavesNextTokenAt: wavesTimings.nextTokenAt,
+    wavesCapAt: wavesTimings.capAt,
     pvp: hero?.progress?.pvpState?.stamina?.currentAmount ?? 0,
     // Absent between seasons - null (not 0) so the UI can tell "not currently ranked" apart from
     // an actual position/size of 0.
     pvpPosition: hero?.progress?.pvpState?.playerPosition ?? null,
     pvpGroupSize: hero?.progress?.pvpState?.actualGroupSize ?? null,
+    pvpNextTokenAt: pvpTimings.nextTokenAt,
+    pvpCapAt: pvpTimings.capAt,
+    pvpPausesAt: pvpTimings.pausesAt,
+    pvpStopped: pvpTimings.stopped,
     guildBoss: hero?.progress?.guildState?.guildBoss?.attempts?.currentAmount ?? 0,
+    guildBossNextTokenAt: guildBossTimings.nextTokenAt,
+    guildBossCapAt: guildBossTimings.capAt,
+    guildBossBurnAt: guildBossTimings.burnAt,
     guildBossBomb: hero?.progress?.guildState?.guildBoss?.bombAttempts?.currentAmount ?? 0,
+    guildBossBombNextTokenAt: guildBossBombTimings.nextTokenAt,
+    guildBossBombCapAt: guildBossBombTimings.capAt,
     mowAmmo: hero?.resources?.groupedCurrencies?.global?.machinesOfWarAmmo ?? 0,
   };
 
