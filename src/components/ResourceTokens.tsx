@@ -1,6 +1,7 @@
 import { Icon } from "./Icon";
 import { watchAdIconUrl } from "../watch-ad-icon";
 import { PVP_MAX } from "../api/resource-regen";
+import { formatDateTime, urgencyColorClass, DEFAULT_SUBTEXT_CLASS } from "../format-date-time";
 import {
   guildBossBombIconUrl,
   guildBossIconUrl,
@@ -17,20 +18,18 @@ interface ResourceTokensProps {
   adViewsRemaining: number | null;
 }
 
-// Military time (no AM/PM, always 4 digits) plus date, since several of these resources regen
-// slowly enough that "next"/"cap" routinely land on a different calendar day.
-function formatDateTime(epochMs: number): string {
-  const d = new Date(epochMs);
-  const date = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-  const time = `${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
-  return `${date} ${time}`;
+interface SubtextLine {
+  text: string;
+  className: string;
 }
 
-function regenSubtext(nextTokenAt: number | null, capAt: number | null): string[] {
-  return [
-    nextTokenAt !== null ? `Next: ${formatDateTime(nextTokenAt)}` : null,
-    capAt !== null ? `Cap: ${formatDateTime(capAt)}` : null,
-  ].filter((line): line is string => line !== null);
+// "Next token" is never urgency-colored (there's nothing to warn about), but "Cap"/"Burn" lines
+// are deadlines worth calling out as they approach - see urgencyColorClass.
+function regenSubtext(nextTokenAt: number | null, capAt: number | null): SubtextLine[] {
+  const lines: SubtextLine[] = [];
+  if (nextTokenAt !== null) lines.push({ text: `Next: ${formatDateTime(nextTokenAt)}`, className: DEFAULT_SUBTEXT_CLASS });
+  if (capAt !== null) lines.push({ text: `Cap: ${formatDateTime(capAt)}`, className: urgencyColorClass(capAt) });
+  return lines;
 }
 
 export function ResourceTokens({ resources, adViewsRemaining }: ResourceTokensProps) {
@@ -41,27 +40,33 @@ export function ResourceTokens({ resources, adViewsRemaining }: ResourceTokensPr
       : null;
   // PVP's "next token" comes from the server's own staminaRegenUntil deadline, not computed
   // regen math - see computePvpTimings in resource-regen.ts for the three possible states.
-  const pvpScheduleLines = resources.pvpStopped
-    ? [`${resources.pvp}/${PVP_MAX} (no more regen)`]
+  const pvpScheduleLines: SubtextLine[] = resources.pvpStopped
+    ? [{ text: `${resources.pvp}/${PVP_MAX} (no more regen)`, className: DEFAULT_SUBTEXT_CLASS }]
     : [
-        resources.pvpNextTokenAt !== null ? `Next: ${formatDateTime(resources.pvpNextTokenAt)}` : null,
+        resources.pvpNextTokenAt !== null
+          ? { text: `Next: ${formatDateTime(resources.pvpNextTokenAt)}`, className: DEFAULT_SUBTEXT_CLASS }
+          : null,
         resources.pvpCapAt !== null
-          ? `Cap: ${formatDateTime(resources.pvpCapAt)}`
+          ? { text: `Cap: ${formatDateTime(resources.pvpCapAt)}`, className: urgencyColorClass(resources.pvpCapAt) }
           : resources.pvpPausesAt !== null
-            ? `Pauses: ${formatDateTime(resources.pvpPausesAt)}`
+            ? { text: `Pauses: ${formatDateTime(resources.pvpPausesAt)}`, className: DEFAULT_SUBTEXT_CLASS }
             : null,
-      ].filter((line): line is string => line !== null);
-  const pvpSubtext = [pvpPositionLine, ...pvpScheduleLines].filter((line): line is string => line !== null);
+      ].filter((line): line is SubtextLine => line !== null);
+  const pvpPositionSubtext: SubtextLine[] = pvpPositionLine ? [{ text: pvpPositionLine, className: DEFAULT_SUBTEXT_CLASS }] : [];
+  const pvpSubtext = [...pvpPositionSubtext, ...pvpScheduleLines];
 
   // Raid tokens (guild boss attempts) get burned at the next 09:45/22:45 UTC checkpoint if still
   // sitting at cap then - common when waiting for a raid target to open, so this is a deadline to
-  // watch, not an error state.
-  const guildBossSubtext = [
+  // watch, not an error state. It gets the same urgency coloring as a cap time - it'll typically
+  // land on a different tier/color than the cap line above it, since it's a different timestamp.
+  const guildBossSubtext: SubtextLine[] = [
     ...regenSubtext(resources.guildBossNextTokenAt, resources.guildBossCapAt),
-    resources.guildBossBurnAt !== null ? `Burn: ${formatDateTime(resources.guildBossBurnAt)}` : null,
-  ].filter((line): line is string => line !== null);
+    ...(resources.guildBossBurnAt !== null
+      ? [{ text: `Burn: ${formatDateTime(resources.guildBossBurnAt)}`, className: urgencyColorClass(resources.guildBossBurnAt) }]
+      : []),
+  ];
 
-  const entries: Array<{ key: string; label: string; icon: string; value: number | string; subtext?: string[] }> = [
+  const entries: Array<{ key: string; label: string; icon: string; value: number | string; subtext?: SubtextLine[] }> = [
     {
       key: "stamina",
       label: "Stamina",
@@ -114,8 +119,8 @@ export function ResourceTokens({ resources, adViewsRemaining }: ResourceTokensPr
           <Icon src={entry.icon} title={entry.label} />
           <span className="text-sm font-medium">{entry.value}</span>
           {entry.subtext?.map((line, i) => (
-            <span key={i} className="text-xs text-neutral-500 dark:text-neutral-400">
-              {line}
+            <span key={i} className={`text-xs ${line.className}`}>
+              {line.text}
             </span>
           ))}
         </div>
