@@ -13,10 +13,19 @@ interface OpsCardFrameProps {
   children: ReactNode;
   corner: ReactNode;
   dimmed: boolean;
+  fulfilled: boolean | null;
   onClick: () => void;
 }
 
-export function OpsCardFrame({ entry, environment, children, corner, dimmed, onClick }: OpsCardFrameProps) {
+// null = fulfillment isn't known yet (solver hasn't produced a result for the current board) -
+// stay neutral rather than guessing.
+function borderClass(fulfilled: boolean | null): string {
+  if (fulfilled === true) return "border-2 border-green-700/60 dark:border-green-500/60";
+  if (fulfilled === false) return "border-2 border-red-700/60 dark:border-red-500/60";
+  return "border border-black/10 dark:border-white/15";
+}
+
+export function OpsCardFrame({ entry, environment, children, corner, dimmed, fulfilled, onClick }: OpsCardFrameProps) {
   const name = operationName(entry.id);
 
   return (
@@ -25,7 +34,7 @@ export function OpsCardFrame({ entry, environment, children, corner, dimmed, onC
         e.stopPropagation();
         onClick();
       }}
-      className={`flex cursor-pointer flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 text-left shadow-sm transition-opacity dark:border-white/15 dark:bg-neutral-900/40 ${dimmed ? "opacity-20" : ""}`}
+      className={`flex cursor-pointer flex-col gap-2 rounded-lg ${borderClass(fulfilled)} bg-white p-3 text-left shadow-sm transition-opacity dark:bg-neutral-900/40 ${dimmed ? "opacity-20" : ""}`}
     >
       <div className="flex justify-center">
         <IconRow>

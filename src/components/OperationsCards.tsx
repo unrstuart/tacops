@@ -7,12 +7,14 @@ export function OperationsCards({
   board,
   environment,
   assignment,
+  solverReady,
   selectedExpeditionId,
   onSelect,
 }: {
   board: ExpeditionBoardEntry[];
   environment: Environment;
   assignment: BoardAssignmentResult;
+  solverReady: boolean;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
 }) {
@@ -30,6 +32,7 @@ export function OperationsCards({
           entry={entry}
           environment={environment}
           assignment={assignment}
+          solverReady={solverReady}
           selectedExpeditionId={selectedExpeditionId}
           onSelect={onSelect}
         />

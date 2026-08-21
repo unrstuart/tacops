@@ -6,6 +6,7 @@ import { PortraitList } from "./PortraitList";
 import { DispatchedUnitsRow } from "./DispatchedUnitsRow";
 import { OpsCardFrame } from "./OpsCardFrame";
 import { getObjectiveDisplay, entryIsUnavailable, entryStatusLabel } from "../board/board-view-model";
+import { isEntryFulfilled } from "../board/entry-fulfillment";
 import type { Environment, ExpeditionBoardEntry } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
@@ -13,18 +14,21 @@ export function OperationCard({
   entry,
   environment,
   assignment,
+  solverReady,
   selectedExpeditionId,
   onSelect,
 }: {
   entry: ExpeditionBoardEntry;
   environment: Environment;
   assignment: BoardAssignmentResult;
+  solverReady: boolean;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
 }) {
   const unavailable = entryIsUnavailable(entry);
   const solution = assignment.get(entry.expeditionId);
   const dimmed = selectedExpeditionId !== null && selectedExpeditionId !== entry.expeditionId;
+  const fulfilled = unavailable || solverReady ? isEntryFulfilled(entry, assignment) : null;
 
   return (
     <OpsCardFrame
@@ -32,6 +36,7 @@ export function OperationCard({
       environment={environment}
       corner={entryStatusLabel(entry)}
       dimmed={dimmed}
+      fulfilled={fulfilled}
       onClick={() => onSelect(entry.expeditionId)}
     >
       <div className="flex justify-end">

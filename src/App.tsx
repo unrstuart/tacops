@@ -292,6 +292,7 @@ export function App() {
                     board={board}
                     environment={environment}
                     assignment={assignment}
+                    solverReady={solverState === "success"}
                     selectedExpeditionId={selectedExpeditionId}
                     onSelect={toggleSelection}
                   />
@@ -300,6 +301,7 @@ export function App() {
                     board={board}
                     environment={environment}
                     assignment={assignment}
+                    solverReady={solverState === "success"}
                     selectedExpeditionId={selectedExpeditionId}
                     onSelect={toggleSelection}
                   />
