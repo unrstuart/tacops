@@ -39,7 +39,7 @@ export function OperationCard({
           {entry.bonusObjectives.map((o, i) => {
             const display = getObjectiveDisplay(o);
             if (display.badge === "no-ranged-attack" && display.iconUrl) {
-              return <IconBadge key={i} src={display.iconUrl} title={display.label} badgeText="✕" />;
+              return <IconBadge key={i} src={display.iconUrl} title={display.label} />;
             }
             return display.iconUrl ? (
               <Icon key={i} src={display.iconUrl} title={display.label} />
