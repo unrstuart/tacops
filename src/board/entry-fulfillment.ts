@@ -19,9 +19,15 @@ function dispatchedUnitsFulfillObjectives(entry: ExpeditionBoardEntry): boolean 
   );
 }
 
-export function isEntryFulfilled(entry: ExpeditionBoardEntry, assignment: BoardAssignmentResult): boolean {
+// "unrunnable" only applies to boards that haven't been dispatched yet - a dispatched/completed
+// board is by definition already running, so it can only ever be "partial" or "complete".
+export type EntryFulfillment = "unrunnable" | "partial" | "complete";
+
+export function getEntryFulfillment(entry: ExpeditionBoardEntry, assignment: BoardAssignmentResult): EntryFulfillment {
   if (entryIsUnavailable(entry)) {
-    return dispatchedUnitsFulfillObjectives(entry);
+    return dispatchedUnitsFulfillObjectives(entry) ? "complete" : "partial";
   }
-  return assignment.get(entry.expeditionId)?.bonusCompleted === true;
+  const solution = assignment.get(entry.expeditionId);
+  if (!solution?.run) return "unrunnable";
+  return solution.bonusCompleted ? "complete" : "partial";
 }

@@ -12,7 +12,7 @@ import {
   entryStatusLabel,
   getObjectiveDisplay,
 } from "../board/board-view-model";
-import { isEntryFulfilled } from "../board/entry-fulfillment";
+import { getEntryFulfillment, type EntryFulfillment } from "../board/entry-fulfillment";
 import { operationName } from "../board/operation-name";
 import { deployIconUrl } from "../board/deploy-icon";
 import type { Environment, ExpeditionBoardEntry } from "../api/types";
@@ -22,10 +22,12 @@ const cellClass = "border-b border-black/10 px-3 py-2 align-top dark:border-whit
 
 // null = fulfillment isn't known yet (solver hasn't produced a result for the current board) -
 // stay neutral rather than guessing. A left-edge accent keeps the shared grid lines (cellClass)
-// untouched.
-function rowAccentClass(fulfilled: boolean | null): string {
-  if (fulfilled === true) return "border-l-4 border-green-700/60 dark:border-green-500/60";
-  if (fulfilled === false) return "border-l-4 border-red-700/60 dark:border-red-500/60";
+// untouched. "unrunnable" is red, "partial" (runs but misses a bonus objective) is amber,
+// "complete" is green.
+function rowAccentClass(fulfillment: EntryFulfillment | null): string {
+  if (fulfillment === "complete") return "border-l-4 border-green-700/60 dark:border-green-500/60";
+  if (fulfillment === "partial") return "border-l-4 border-amber-700/60 dark:border-amber-500/60";
+  if (fulfillment === "unrunnable") return "border-l-4 border-red-700/60 dark:border-red-500/60";
   return "border-l-4 border-transparent";
 }
 
@@ -75,7 +77,7 @@ export function OperationsTable({
           const solution = assignment.get(entry.expeditionId);
           const dimmed = selectedExpeditionId !== null && selectedExpeditionId !== entry.expeditionId;
           const name = operationName(entry.id);
-          const fulfilled = unavailable || solverReady ? isEntryFulfilled(entry, assignment) : null;
+          const fulfillment = unavailable || solverReady ? getEntryFulfillment(entry, assignment) : null;
 
           return (
             <tr
@@ -84,7 +86,7 @@ export function OperationsTable({
                 e.stopPropagation();
                 onSelect(entry.expeditionId);
               }}
-              className={`cursor-pointer transition-opacity ${rowAccentClass(fulfilled)} ${dimmed ? "opacity-20" : ""}`}
+              className={`cursor-pointer transition-opacity ${rowAccentClass(fulfillment)} ${dimmed ? "opacity-20" : ""}`}
             >
               <td className={cellClass}>
                 <Icon src={entryRarityIconUrl(entry)} />
