@@ -18,7 +18,7 @@ import { storeWebCredential } from "./api/store-web-credential";
 import { trackUsage } from "./track-usage";
 import type { BoardAssignmentResult } from "./board/board-solver";
 import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
-import type { ResourceKey } from "./board/reward-amount";
+import type { PriorityKey } from "./board/reward-amount";
 import type { Environment, ExpeditionBoardEntry, PlayerResources, RawUnit } from "./api/types";
 
 const TABS = [
@@ -29,7 +29,7 @@ const TABS = [
 ];
 
 const FETCH_COUNTDOWN_SECONDS = 60;
-const SOLVER_COUNTDOWN_SECONDS = 60; // 6 lexicographic passes x the 10s-per-pass solver timeout
+const SOLVER_COUNTDOWN_SECONDS = 70; // 7 lexicographic passes x the 10s-per-pass solver timeout
 
 export function App() {
   const [environment, setEnvironment] = useState<Environment>("prod");
@@ -49,7 +49,8 @@ export function App() {
   const [machinesOfWar, setMachinesOfWar] = useState<RawUnit[]>([]);
   const [adViewsRemaining, setAdViewsRemaining] = useState<number | null>(null);
   const [resources, setResources] = useState<PlayerResources | null>(null);
-  const [priorityOrder, setPriorityOrder] = useState<[ResourceKey, ResourceKey, ResourceKey]>([
+  const [priorityOrder, setPriorityOrder] = useState<[PriorityKey, PriorityKey, PriorityKey, PriorityKey]>([
+    "rarity",
     "crusadeBomb",
     "intel",
     "crusadeNpc",
@@ -59,8 +60,7 @@ export function App() {
   const [solverSecondsRemaining, setSolverSecondsRemaining] = useState(SOLVER_COUNTDOWN_SECONDS);
   const [assignment, setAssignment] = useState<BoardAssignmentResult>(new Map());
   const [solverError, setSolverError] = useState<string>();
-  const [solverDegradedReason, setSolverDegradedReason] = useState<string>();
-  const [solverHeuristicReason, setSolverHeuristicReason] = useState<string>();
+  const [solverIncompleteReason, setSolverIncompleteReason] = useState<string>();
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
 
@@ -80,8 +80,7 @@ export function App() {
       setAssignment(new Map());
       setSolverState("idle");
       setSolverError(undefined);
-      setSolverDegradedReason(undefined);
-      setSolverHeuristicReason(undefined);
+      setSolverIncompleteReason(undefined);
       return;
     }
 
@@ -96,22 +95,19 @@ export function App() {
       if (event.data.requestId !== requestIdRef.current) return; // stale response, ignore
       if (event.data.status === "success") {
         setAssignment(new Map(event.data.assignmentEntries));
-        setSolverDegradedReason(event.data.solveStatus === "degraded" ? event.data.message : undefined);
-        setSolverHeuristicReason(event.data.solveStatus === "heuristic" ? event.data.message : undefined);
+        setSolverIncompleteReason(event.data.solveStatus === "incomplete" ? event.data.message : undefined);
         setSolverError(undefined);
         setSolverState("success");
       } else {
         setSolverError(event.data.error);
-        setSolverDegradedReason(undefined);
-        setSolverHeuristicReason(undefined);
+        setSolverIncompleteReason(undefined);
         setSolverState("error");
       }
     };
 
     setSolverState("solving");
     setSolverError(undefined);
-    setSolverDegradedReason(undefined);
-    setSolverHeuristicReason(undefined);
+    setSolverIncompleteReason(undefined);
     const request: SolveRequest = { requestId, board, heroes, priorityOrder };
     worker.postMessage(request);
   }, [board, heroes, priorityOrder]);
@@ -275,13 +271,10 @@ export function App() {
                     Couldn't compute a suggested assignment: {solverError}
                   </p>
                 )}
-                {solverHeuristicReason && (
+                {solverIncompleteReason && (
                   <p className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-700 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-                    {solverHeuristicReason}
+                    {solverIncompleteReason}
                   </p>
-                )}
-                {solverDegradedReason && (
-                  <p className="mt-2 text-amber-600 dark:text-amber-400">{solverDegradedReason}</p>
                 )}
                 <RequiredCharacterPool assignment={assignment} />
               </>
@@ -299,6 +292,7 @@ export function App() {
                     board={board}
                     environment={environment}
                     assignment={assignment}
+                    solverReady={solverState === "success"}
                     selectedExpeditionId={selectedExpeditionId}
                     onSelect={toggleSelection}
                   />
@@ -307,6 +301,7 @@ export function App() {
                     board={board}
                     environment={environment}
                     assignment={assignment}
+                    solverReady={solverState === "success"}
                     selectedExpeditionId={selectedExpeditionId}
                     onSelect={toggleSelection}
                   />

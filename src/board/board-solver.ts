@@ -1,7 +1,7 @@
 import solver, { type Model as LpModel, type SolveResult } from "javascript-lp-solver";
 import { BoardFilter, boardMinRank, type RankedUnit } from "./board-filter";
 import { characterSatisfiesObjective } from "./objective-eligibility";
-import { rewardAmount, type ResourceKey } from "./reward-amount";
+import { rewardAmount, type PriorityKey } from "./reward-amount";
 import { estimateXpGain, isXpCapped } from "./xp-gain";
 import { requiredAlliance } from "./board-alliance";
 import { entryRarity, entryIsUnavailable } from "./board-view-model";
@@ -87,12 +87,20 @@ export function groupObjectives(objectives: BonusObjective[]): ObjectiveGroup[] 
   return [...groups.values()];
 }
 
-type PassKey = "highReward" | "midReward" | "lowReward" | "xpGain" | "runCount" | "overkill";
+type PriorityPassKey = `priority${number}`;
+type PassKey = PriorityPassKey | "xpGain" | "runCount" | "overkill";
 
+const PRIORITY_TIER_COUNT = 4;
+
+function priorityPassKey(tierIndex: number): PriorityPassKey {
+  return `priority${tierIndex}`;
+}
+
+// The first N passes are the user's priority tiers (lexicographic - each pass's achieved value
+// gets locked in via an `equal` constraint before the next pass runs, see runPasses), followed by
+// the fixed xpGain/runCount/overkill tail that always applies regardless of priority order.
 const PASS_ORDER: Array<{ key: PassKey; opType: "max" | "min" }> = [
-  { key: "highReward", opType: "max" },
-  { key: "midReward", opType: "max" },
-  { key: "lowReward", opType: "max" },
+  ...Array.from({ length: PRIORITY_TIER_COUNT }, (_, i) => ({ key: priorityPassKey(i), opType: "max" as const })),
   { key: "xpGain", opType: "max" },
   { key: "runCount", opType: "max" },
   { key: "overkill", opType: "min" },
@@ -117,12 +125,11 @@ interface BuiltModel {
 function buildModel(
   openBoards: ExpeditionBoardEntry[],
   roster: RosterCharacter[],
-  priorityOrder: [ResourceKey, ResourceKey, ResourceKey],
+  priorityOrder: [PriorityKey, PriorityKey, PriorityKey, PriorityKey],
 ): BuiltModel {
   const variables: Record<string, Record<string, number>> = {};
   const constraints: Record<string, { min?: number; max?: number; equal?: number }> = {};
   const binaries: Record<string, 1> = {};
-  const [highKey, midKey, lowKey] = priorityOrder;
 
   const addCoef = (varName: string, constraintName: string, coef: number) => {
     const v = (variables[varName] ??= {});
@@ -153,9 +160,16 @@ function buildModel(
     addCoef(yVar, `yrun::${boardId}`, 1);
     addCoef(runVar, `yrun::${boardId}`, -1);
 
-    addCoef(yVar, "highReward", rewardAmount(entry.bonusRewards, highKey));
-    addCoef(yVar, "midReward", rewardAmount(entry.bonusRewards, midKey));
-    addCoef(yVar, "lowReward", rewardAmount(entry.bonusRewards, lowKey));
+    priorityOrder.forEach((key, tierIndex) => {
+      const passKey = priorityPassKey(tierIndex);
+      if (key === "rarity") {
+        // Rarity isn't tied to bonus-objective completion like the resource rewards below - it's
+        // a property of running the board at all, so it weights runVar instead of yVar.
+        addCoef(runVar, passKey, rarity);
+      } else {
+        addCoef(yVar, passKey, rewardAmount(entry.bonusRewards, key));
+      }
+    });
     addCoef(runVar, "runCount", 1);
 
     const slotConstraint = `slots::${boardId}`;
@@ -201,7 +215,9 @@ function buildModel(
   }
 
   const model: LpModel = {
-    optimize: "highReward",
+    // Overwritten before the first Solve() call in runPasses - these are just placeholders to
+    // satisfy LpModel's shape.
+    optimize: priorityPassKey(0),
     opType: "max",
     constraints,
     variables,
@@ -230,15 +246,15 @@ function isIntegralResult(model: LpModel, result: SolveResult): boolean {
   return true;
 }
 
-type PassesResult =
-  | { result: SolveResult; status: "ok" | "degraded"; message?: string }
-  | { result: null; status: "failed"; message: string };
+type PassesResult = { result: SolveResult; status: "ok" | "degraded" } | { result: null; status: "failed" };
 
 // If a later pass can't finish in time, falling back to the last pass that DID complete is still
 // a fully valid, feasible assignment - just not optimized for the lower-priority tiers beyond
 // that point. If even the first pass can't produce a usable result, there's nothing to fall back
-// to - report that as a normal "failed" outcome rather than throwing, so the caller can show a
-// clear message and an empty board instead of an exception.
+// to - report that as a normal "failed" outcome rather than throwing, so the caller can fall back
+// to the greedy solver instead of an exception. Whether the caller needs to warn the user at all
+// depends on whether the resulting assignment actually leaves a board unrun - see
+// solveBoardAssignment - not on which of these internal paths produced it.
 function runPasses(model: LpModel): PassesResult {
   model.timeout = SOLVE_TIMEOUT_MS;
   let lastGoodResult: SolveResult | undefined;
@@ -257,18 +273,10 @@ function runPasses(model: LpModel): PassesResult {
     if (!usable) {
       if (lastGoodResult) {
         console.warn(`[board-solver] pass "${pass.key}" didn't produce a usable result - falling back to the last completed pass's solution`);
-        return {
-          result: lastGoodResult,
-          status: "degraded",
-          message: `Optimizing for "${pass.key}" took too long, so this is the best assignment found before that - it may not be fully optimal.`,
-        };
+        return { result: lastGoodResult, status: "degraded" };
       }
       console.warn(`[board-solver] pass "${pass.key}" didn't produce a usable result and there's no earlier fallback`);
-      return {
-        result: null,
-        status: "failed",
-        message: "We weren't able to find a viable solution for these operations - please fill them in yourself this time.",
-      };
+      return { result: null, status: "failed" };
     }
     lastGoodResult = result;
     if (i < PASS_ORDER.length - 1) {
@@ -490,16 +498,23 @@ function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: s
   return solutions;
 }
 
+// The message shown whenever the final assignment leaves any open board unrun - regardless of
+// whether that came from a degraded LP pass, a greedy-fallback board it couldn't fully solve, or
+// (in principle) an "ok" LP result that's still infeasible for some board's roster requirements.
+// A greedy-fallback result that DOES fully cover the board is not warned about at all.
+const INCOMPLETE_BOARD_MESSAGE =
+  "Could not find an optimal board with priorities in the order you gave. Please try adjusting priority order.";
+
 export interface SolveBoardAssignmentResult {
   assignment: BoardAssignmentResult;
-  status: "ok" | "degraded" | "heuristic";
+  status: "ok" | "incomplete";
   message?: string;
 }
 
 export function solveBoardAssignment(
   board: ExpeditionBoardEntry[],
   heroes: RawUnit[],
-  priorityOrder: [ResourceKey, ResourceKey, ResourceKey],
+  priorityOrder: [PriorityKey, PriorityKey, PriorityKey, PriorityKey],
 ): SolveBoardAssignmentResult {
   const openBoards = board.filter((entry) => !entryIsUnavailable(entry));
   if (openBoards.length === 0) {
@@ -516,20 +531,22 @@ export function solveBoardAssignment(
   const solveStartedAt = performance.now();
   const passesResult = runPasses(built.model);
   console.log(`[board-solver] total solve time: ${Math.round(performance.now() - solveStartedAt)}ms`);
+
+  let assignment: BoardAssignmentResult;
   if (passesResult.result === null) {
     console.warn("[board-solver] LP failed entirely - falling back to the greedy heuristic solver");
-    const assignment = solveGreedyFallback(openBoards, roster);
-    return {
-      assignment,
-      status: "heuristic",
-      message:
-        "We couldn't find a mathematically optimal solution in time, so this is a best-effort heuristic assignment - please double-check it before deploying.",
-    };
+    assignment = solveGreedyFallback(openBoards, roster);
+  } else {
+    assignment = extractSolution(
+      built,
+      passesResult.result,
+      openBoards.map((entry) => entry.expeditionId),
+    );
   }
-  const assignment = extractSolution(
-    built,
-    passesResult.result,
-    openBoards.map((entry) => entry.expeditionId),
-  );
-  return { assignment, status: passesResult.status, message: passesResult.message };
+
+  const incomplete = [...assignment.values()].some((solution) => !solution.run);
+  if (incomplete) {
+    return { assignment, status: "incomplete", message: INCOMPLETE_BOARD_MESSAGE };
+  }
+  return { assignment, status: "ok" };
 }

@@ -22,6 +22,7 @@ export interface ExpeditionBoardEntry {
   baseRewards: string[];
   bonusRewards: string[];
   status: string;
+  startedOn?: number;
   units?: string[];
 }
 

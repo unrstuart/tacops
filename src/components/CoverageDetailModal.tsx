@@ -78,7 +78,7 @@ export function CoverageDetailModal({ characterName, rows, onClose }: CoverageDe
                   {row.objectives.map((o, oi) => {
                     const display = getObjectiveDisplay(o);
                     if (display.badge === "no-ranged-attack" && display.iconUrl) {
-                      return <IconBadge key={oi} src={display.iconUrl} title={display.label} badgeText="✕" />;
+                      return <IconBadge key={oi} src={display.iconUrl} title={display.label} />;
                     }
                     return display.iconUrl ? (
                       <Icon key={oi} src={display.iconUrl} title={display.label} />

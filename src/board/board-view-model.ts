@@ -25,6 +25,13 @@ export function entryStatusLabel(entry: ExpeditionBoardEntry): "Ready" | "Dispat
   return "Ready";
 }
 
+export function entryFinishAt(entry: ExpeditionBoardEntry): number | null {
+  if (entry.status !== "Dispatched" || entry.startedOn === undefined) {
+    return null;
+  }
+  return entry.startedOn + entry.duration * 1000;
+}
+
 export function entryRarity(entry: ExpeditionBoardEntry): Rarity {
   const rarity = RarityMapper.stringToRarity(entry.rarity);
   if (rarity === undefined) {
