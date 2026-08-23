@@ -106,7 +106,9 @@ export async function fetchPlayerData(
     board,
     heroes: units.filter((u) => characterIds.has(u.id)),
     machinesOfWar: units.filter((u) => mowIds.has(u.id)),
-    adViewsRemaining: hero?.player?.adViews?.currentAmount ?? 0,
+    // Absent (not 0) means the game hasn't reported ad-view usage yet - e.g. no ads watched today
+    // - in which case the daily allotment (7) hasn't been drawn down at all.
+    adViewsRemaining: hero?.player?.adViews?.currentAmount ?? 7,
     resources,
   };
 }
