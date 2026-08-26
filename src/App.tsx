@@ -413,6 +413,7 @@ export function App() {
             planetLeaderboards={planetLeaderboards}
             error={crusadeError}
             loadingProgress={crusadeProgress}
+            viewMode={viewMode}
           />
         )}
       </div>

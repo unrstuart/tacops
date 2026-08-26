@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFactionLeaderboard, findOwnFactionId, mergeSideLeaderboard } from "./fetch-crusade-data";
+import { buildFactionLeaderboard, findOwnFactionId, mergeSideLeaderboard, pickReferenceScore } from "./fetch-crusade-data";
 
 // Points taken from a real captured GET_LEADERBOARD_2 response (planet_041, crusadePlayer
 // "_against" leaderboard) - the player (myRank 53) doesn't place in the top 25 shown here,
@@ -39,6 +39,7 @@ describe("mergeSideLeaderboard", () => {
         { rank: 10, points: 13194 },
         { rank: 25, points: 11487 },
       ],
+      referenceScore: { rank: 25, points: 11487 }, // 1858 participants: top-10% rank (186) isn't visible, falls back to #25
     });
   });
 
@@ -72,7 +73,13 @@ describe("mergeSideLeaderboard", () => {
     it("falls back to the chosenSide's breakpoints (myRank null, benchmarks still present)", () => {
       const forSide = { ...noRank, numParticipants: 200, topEntries: [{ position: 0, points: 5000 }] };
       const result = mergeSideLeaderboard(forSide, noRank, "For");
-      expect(result).toEqual({ numParticipants: 200, myRank: null, myPoints: null, benchmarks: [{ rank: 1, points: 5000 }] });
+      expect(result).toEqual({
+        numParticipants: 200,
+        myRank: null,
+        myPoints: null,
+        benchmarks: [{ rank: 1, points: 5000 }],
+        referenceScore: null, // top-10% rank (20) isn't in topEntries in this fixture
+      });
     });
 
     it("matches chosenSide case-insensitively", () => {
@@ -115,6 +122,7 @@ describe("buildFactionLeaderboard", () => {
         { rank: 10, points: 13194 },
         { rank: 25, points: 11487 },
       ],
+      referenceScore: { rank: 25, points: 11487 }, // 1858 participants: top-10% rank (186) isn't visible, falls back to #25
     });
   });
 
@@ -131,10 +139,30 @@ describe("buildFactionLeaderboard", () => {
       myRank: null,
       myPoints: null,
       benchmarks: [{ rank: 1, points: 58946 }],
+      referenceScore: null, // #25 isn't in topEntries in this fixture
     });
   });
 
   it("returns null for a null entry", () => {
     expect(buildFactionLeaderboard(noEntry)).toBeNull();
+  });
+});
+
+describe("pickReferenceScore", () => {
+  it("uses the top-10% rank's score when it's within the visible top-25 window", () => {
+    // 130 participants -> ceil(130 * 0.1) = rank 13 -> topEntries position 12 (0-indexed).
+    const entry = { ...realAgainstEntry, numParticipants: 130 };
+    expect(pickReferenceScore(entry)).toEqual({ rank: 13, points: 12475 });
+  });
+
+  it("falls back to the #25 score when the top-10% rank isn't visible (>250 participants)", () => {
+    // 1858 participants -> ceil(1858 * 0.1) = rank 186, far past the top-25 window, so #25
+    // (topEntries position 24) is used instead.
+    expect(pickReferenceScore(realAgainstEntry)).toEqual({ rank: 25, points: 11487 });
+  });
+
+  it("returns null when the target rank isn't present in topEntries", () => {
+    const sparse = { numParticipants: 4197, myRank: null, myPoints: null, topEntries: [{ position: 0, points: 58946 }], localEntries: [] };
+    expect(pickReferenceScore(sparse)).toBeNull();
   });
 });
