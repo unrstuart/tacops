@@ -10,23 +10,26 @@ import { OperationsCards } from "./components/OperationsCards";
 import { CharactersTable } from "./components/CharactersTable";
 import { MowTable } from "./components/MowTable";
 import { BoardCoverageTab } from "./components/BoardCoverageTab";
+import { CrusadeTab } from "./components/CrusadeTab";
 import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { ResourceTokens } from "./components/ResourceTokens";
 import { fetchPlayerData } from "./api/fetch-player-data";
 import { entryIsUnavailable } from "./board/board-view-model";
+import { activePlanetIds, fetchCrusadeData, fetchLeaderboardData } from "./api/fetch-crusade-data";
 import { storeWebCredential } from "./api/store-web-credential";
 import { trackUsage } from "./track-usage";
 import type { BoardAssignmentResult } from "./board/board-solver";
 import type { SolveRequest, SolveResponse } from "./board/board-solver.worker";
 import type { PriorityKey } from "./board/reward-amount";
-import type { Environment, ExpeditionBoardEntry, PlayerResources, RawUnit } from "./api/types";
+import type { CrusadeData, Environment, ExpeditionBoardEntry, PlanetLeaderboard, PlayerResources, RawUnit } from "./api/types";
 
 const TABS = [
   { id: "operations", label: "Operations" },
   { id: "characters", label: "Characters" },
   { id: "mows", label: "Machines of War" },
   { id: "coverage", label: "Board Coverage" },
+  { id: "crusade", label: "Crusade" },
 ];
 
 const FETCH_COUNTDOWN_SECONDS = 60;
@@ -50,6 +53,11 @@ export function App() {
   const [machinesOfWar, setMachinesOfWar] = useState<RawUnit[]>([]);
   const [adViewsRemaining, setAdViewsRemaining] = useState<number | null>(null);
   const [resources, setResources] = useState<PlayerResources | null>(null);
+  const [rawPlayerData, setRawPlayerData] = useState<unknown>(null);
+  const [crusadeData, setCrusadeData] = useState<CrusadeData | null>(null);
+  const [planetLeaderboards, setPlanetLeaderboards] = useState<PlanetLeaderboard[]>([]);
+  const [crusadeError, setCrusadeError] = useState<string | null>(null);
+  const [crusadeProgress, setCrusadeProgress] = useState<{ done: number; total: number; phase: "side" | "faction" } | null>(null);
   const [priorityOrder, setPriorityOrder] = useState<[PriorityKey, PriorityKey, PriorityKey, PriorityKey]>([
     "rarity",
     "crusadeBomb",
@@ -170,6 +178,8 @@ export function App() {
   async function go() {
     setFetchState("loading");
     setBoard([]);
+    setCrusadeError(null);
+    setCrusadeProgress(null);
     try {
       setStatus("Reading local credentials...");
       setStatus("Fetching player data...");
@@ -184,6 +194,7 @@ export function App() {
       setMachinesOfWar(data.machinesOfWar);
       setAdViewsRemaining(data.adViewsRemaining);
       setResources(data.resources);
+      setRawPlayerData(data.raw);
       setFetchState("success");
       if (!isTauri()) {
         void storeWebCredential(userId, clientSecret);
@@ -193,6 +204,71 @@ export function App() {
       console.error("[App] go(): caught error", error);
       setStatus(`Failed: ${error}`);
       setFetchState("error");
+      return;
+    }
+
+    // Kept out of the try/catch above deliberately - a crusade-fetch failure (e.g. the
+    // GAME_EVENT_GAME_CONFIG_VERSION/GAME_EVENT_MULTI_CONFIG_VERSION trio rotating again after a
+    // future game update) shouldn't wipe out the board/character data that already loaded
+    // successfully above. Split into two try/catches (rather than one shared one) so
+    // crusadeError says which call actually failed - error.toString() already embeds the URL and
+    // a JSON dump of the response, from post()/postGameEvent()'s error formatting.
+    const webCredentials = { userId, clientSecret };
+    let crusade;
+    try {
+      crusade = await fetchCrusadeData(environment, webCredentials);
+      setCrusadeData(crusade);
+    } catch (error) {
+      console.error("[App] go(): GET_CRUSADE failed", error);
+      setCrusadeData(null);
+      setPlanetLeaderboards([]);
+      setCrusadeError(`GET_CRUSADE failed: ${error}`);
+      return;
+    }
+
+    try {
+      const planetIds = activePlanetIds(crusade.activeZone);
+      if (planetIds.length > 0) {
+        setCrusadeProgress({ done: 0, total: planetIds.length, phase: "side" });
+        const leaderboards = await fetchLeaderboardData(
+          environment,
+          crusade.crusadeId,
+          crusade.seasonNumber,
+          crusade.chosenSide,
+          planetIds,
+          webCredentials,
+          (done, total, phase) => setCrusadeProgress({ done, total, phase }),
+        );
+        setPlanetLeaderboards(leaderboards);
+      } else {
+        setPlanetLeaderboards([]);
+      }
+    } catch (error) {
+      console.error("[App] go(): GET_LEADERBOARD_2 failed", error);
+      setPlanetLeaderboards([]);
+      setCrusadeError(`GET_LEADERBOARD_2 failed: ${error}`);
+    } finally {
+      setCrusadeProgress(null);
+    }
+  }
+
+  async function exportPlayerData() {
+    const contents = JSON.stringify(rawPlayerData, null, 2);
+    const defaultFileName = `tacops-${environment}-player-data.json`;
+    if (isTauri()) {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { invoke } = await import("@tauri-apps/api/core");
+      const path = await save({ defaultPath: defaultFileName, filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (!path) return; // user cancelled the dialog
+      await invoke("write_text_file", { path, contents });
+    } else {
+      const blob = new Blob([contents], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = defaultFileName;
+      link.click();
+      URL.revokeObjectURL(url);
     }
   }
 
@@ -249,13 +325,25 @@ export function App() {
             </div>
           </>
         )}
-        <button
-          type="submit"
-          disabled={fetchState === "loading"}
-          className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
-        >
-          GO
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={fetchState === "loading"}
+            className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
+          >
+            GO
+          </button>
+          {devModeEnabled && (
+            <button
+              type="button"
+              disabled={rawPlayerData === null}
+              onClick={exportPlayerData}
+              className="rounded-lg border border-neutral-300 bg-transparent px-3 py-2 text-sm text-neutral-700 outline-none transition-colors hover:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:border-neutral-600 dark:text-neutral-300 dark:active:bg-neutral-900/40"
+            >
+              Export JSON
+            </button>
+          )}
+        </div>
       </form>
       {resources && <ResourceTokens resources={resources} adViewsRemaining={adViewsRemaining} />}
       <p className="inline-flex items-center gap-2">
@@ -319,6 +407,14 @@ export function App() {
         {activeTab === "characters" && <CharactersTable heroes={heroes} />}
         {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
         {activeTab === "coverage" && <BoardCoverageTab />}
+        {activeTab === "crusade" && (
+          <CrusadeTab
+            crusadeData={crusadeData}
+            planetLeaderboards={planetLeaderboards}
+            error={crusadeError}
+            loadingProgress={crusadeProgress}
+          />
+        )}
       </div>
     </main>
   );
