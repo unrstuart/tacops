@@ -14,6 +14,7 @@ import { RewardPriorityPicker } from "./components/RewardPriorityPicker";
 import { RequiredCharacterPool } from "./components/RequiredCharacterPool";
 import { ResourceTokens } from "./components/ResourceTokens";
 import { fetchPlayerData } from "./api/fetch-player-data";
+import { entryIsUnavailable } from "./board/board-view-model";
 import { storeWebCredential } from "./api/store-web-credential";
 import { trackUsage } from "./track-usage";
 import type { BoardAssignmentResult } from "./board/board-solver";
@@ -75,7 +76,12 @@ export function App() {
   // Terminating and recreating the worker on every change (rather than queuing) guarantees a
   // priority-order change doesn't have to wait behind a slow, now-stale solve.
   useEffect(() => {
-    if (board.length === 0 || heroes.length === 0) {
+    // Mirrors solveBoardAssignment's own openBoards.length===0 fast path (board-solver.ts) - when
+    // every entry is already Dispatched/Completed there's nothing to solve, so this skips
+    // spinning up (and re-spinning-up on every render) a whole Web Worker just to get back the
+    // same empty assignment the worker itself would return instantly. Previously this case fell
+    // through to the worker path below every time, needlessly recreating the worker.
+    if (board.length === 0 || heroes.length === 0 || board.every(entryIsUnavailable)) {
       workerRef.current?.terminate();
       setAssignment(new Map());
       setSolverState("idle");
