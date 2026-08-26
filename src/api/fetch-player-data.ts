@@ -26,6 +26,8 @@ export interface PlayerData {
   machinesOfWar: RawUnit[];
   adViewsRemaining: number;
   resources: PlayerResources;
+  // The untouched GET_PLAYER envelope, kept around only so it can be exported as-is.
+  raw: unknown;
 }
 
 // webCredentials is only read on the web build - the desktop build auto-discovers credentials
@@ -110,5 +112,6 @@ export async function fetchPlayerData(
     // - in which case the daily allotment (7) hasn't been drawn down at all.
     adViewsRemaining: hero?.player?.adViews?.currentAmount ?? 7,
     resources,
+    raw: response,
   };
 }

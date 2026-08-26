@@ -5,40 +5,48 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // Confirmed via real Proxyman captures: the actual game client reuses this exact trio unchanged
 // across APP_START, CONNECT, and GET_PLAYER in the same session - not re-derived per call. Same
 // values on both prod and QA.
-const GAME_CONFIG_VERSION: &str = "f92fb06ae9c02542bb3f520fc562f709";
-const MULTI_CONFIG_VERSION: &str = "897f8de5439de707acaf6b3add1eeba3";
-const INSTALL_ID: &str = "scraper-installid";
+pub(crate) const GAME_CONFIG_VERSION: &str = "f92fb06ae9c02542bb3f520fc562f709";
+pub(crate) const MULTI_CONFIG_VERSION: &str = "897f8de5439de707acaf6b3add1eeba3";
+pub(crate) const INSTALL_ID: &str = "scraper-installid";
 
 // The fields below this line come straight from a real captured QA CONNECT request and differ
 // from prod. Device/hardware fingerprint fields (os, model, screen size, graphics, ram, ...)
 // are deliberately left as generic scraper values on both environments instead of mirrored from
 // that capture - prod already works fine with fully fake device data, so there's no evidence the
 // backend validates them.
-struct EnvironmentConfig {
+pub(crate) struct EnvironmentConfig {
     base_url: &'static str,
+    // Same host/session as base_url's player/player2 tree, but game-event calls (GET_CRUSADE and
+    // friends) live under a different path and need their own signed envelope - see crusades.rs.
+    pub(crate) game_event_base_url: &'static str,
     environment_id: &'static str,
     bundle_id: &'static str,
     jenkins_build_branch_info: &'static str,
-    built_in_multi_config_version: &'static str,
+    pub(crate) built_in_multi_config_version: &'static str,
 }
 
 const PROD_CONFIG: EnvironmentConfig = EnvironmentConfig {
     base_url: "https://api-live.loki.snowprintstudios.com/player/player2/userId",
+    game_event_base_url: "https://api-live.loki.snowprintstudios.com/game-event/game3/userId",
     environment_id: "live-loki",
     bundle_id: "com.snowprintstudios.tacticus",
     jenkins_build_branch_info: "release",
     built_in_multi_config_version: "f34892307c9d4727869adf53f3afa446",
 };
 
+// game_event_base_url here is derived by analogy with prod (same api-staging host, same
+// player/player2 -> game-event/game3 swap) - unconfirmed by a real QA capture, unlike everything
+// else in this file.
 const QA_CONFIG: EnvironmentConfig = EnvironmentConfig {
     base_url: "https://api-staging.loki.snowprintstudios.com/player/player2/userId",
+    game_event_base_url: "https://api-staging.loki.snowprintstudios.com/game-event/game3/userId",
     environment_id: "staging-loki",
     bundle_id: "com.snowprintstudios.loki.qa",
     jenkins_build_branch_info: "staging",
     built_in_multi_config_version: "34c80d71f65bd74deb6ba74f01d1c725",
 };
 
-fn environment_config(environment: &str) -> Result<&'static EnvironmentConfig, String> {
+pub(crate) fn environment_config(environment: &str) -> Result<&'static EnvironmentConfig, String> {
     match environment {
         "prod" => Ok(&PROD_CONFIG),
         "qa" => Ok(&QA_CONFIG),
@@ -46,7 +54,7 @@ fn environment_config(environment: &str) -> Result<&'static EnvironmentConfig, S
     }
 }
 
-fn now_ms() -> String {
+pub(crate) fn now_ms() -> String {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
 }
 
@@ -68,7 +76,7 @@ fn track_usage(user_id: &str) {
     });
 }
 
-fn envelope(player_event_type: &str, player_event_data: Value, config: &EnvironmentConfig) -> Value {
+pub(crate) fn envelope(player_event_type: &str, player_event_data: Value, config: &EnvironmentConfig) -> Value {
     json!({
         "playerEvent": {
             "playerEventType": player_event_type,
@@ -83,7 +91,7 @@ fn envelope(player_event_type: &str, player_event_data: Value, config: &Environm
     })
 }
 
-async fn post(client: &reqwest::Client, url: &str, body: &Value) -> Result<Value, String> {
+pub(crate) async fn post(client: &reqwest::Client, url: &str, body: &Value) -> Result<Value, String> {
     let res = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -109,25 +117,19 @@ async fn post(client: &reqwest::Client, url: &str, body: &Value) -> Result<Value
     Ok(parsed)
 }
 
-// APP_START -> CONNECT -> GET_PLAYER, matching the real client's boot sequence (confirmed via
-// Proxyman capture). CONNECT exchanges the account's clientSecret/snowId for a sessionId; every
-// call after that uses the sessionId-suffixed URL. GET_PLAYER needs no dynamic parameters at all
-// and returns the player's full state (roster, resources, progress - including the expeditions
-// board), not anything specific to a particular live event.
-#[tauri::command]
-pub async fn fetch_player_data(
-    environment: String,
-    user_id: String,
-    client_secret: String,
-    snow_id: String,
-) -> Result<Value, String> {
-    let config = environment_config(&environment)?;
-    // Without an explicit timeout, reqwest waits forever on a stalled connection - a real request
-    // that just hung was reported to hang the whole app, since nothing here ever gave up.
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+// APP_START -> CONNECT, matching the real client's boot sequence (confirmed via Proxyman
+// capture). CONNECT exchanges the account's clientSecret/snowId for a sessionId; every call
+// after that uses the sessionId-suffixed URL. Shared by every command that needs a session
+// (GET_PLAYER, GET_CRUSADE, GET_LEADERBOARD_2, ...) since the sessionId is valid across both the
+// player/player2 and game-event/game3 URL trees, not just the one it was minted under.
+pub(crate) async fn bootstrap_session(
+    client: &reqwest::Client,
+    environment: &str,
+    user_id: &str,
+    client_secret: &str,
+    snow_id: &str,
+) -> Result<(&'static EnvironmentConfig, String, String), String> {
+    let config = environment_config(environment)?;
     let base_url = format!("{}/{user_id}", config.base_url);
 
     let app_start_body = envelope(
@@ -150,7 +152,7 @@ pub async fn fetch_player_data(
         }),
         config,
     );
-    post(&client, &base_url, &app_start_body).await?;
+    post(client, &base_url, &app_start_body).await?;
 
     let mut connect_data = json!({
         "userId": user_id,
@@ -186,11 +188,34 @@ pub async fn fetch_player_data(
         connect_data["snowId"] = json!(snow_id);
     }
     let connect_body = envelope("CONNECT", connect_data, config);
-    let connect_response = post(&client, &base_url, &connect_body).await?;
+    let connect_response = post(client, &base_url, &connect_body).await?;
     let session_id = connect_response["eventResult"]["eventResponseData"]["userData"]["sessionId"]
         .as_str()
         .ok_or_else(|| "CONNECT response didn't contain a sessionId - is clientSecret/snowId correct?".to_string())?
         .to_string();
+
+    Ok((config, base_url, session_id))
+}
+
+// GET_PLAYER needs no dynamic parameters at all and returns the player's full state (roster,
+// resources, progress - including the expeditions board), not anything specific to a particular
+// live event.
+#[tauri::command]
+pub async fn fetch_player_data(
+    environment: String,
+    user_id: String,
+    client_secret: String,
+    snow_id: String,
+) -> Result<Value, String> {
+    // Without an explicit timeout, reqwest waits forever on a stalled connection - a real request
+    // that just hung was reported to hang the whole app, since nothing here ever gave up.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let (config, base_url, session_id) =
+        bootstrap_session(&client, &environment, &user_id, &client_secret, &snow_id).await?;
 
     let session_url = format!("{base_url}/sessionId/{session_id}");
     let get_player_body = envelope("GET_PLAYER", json!({ "storefrontCountryCode": "NotAvailable" }), config);
