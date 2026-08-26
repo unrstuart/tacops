@@ -81,6 +81,9 @@ export interface SideLeaderboardResult {
   myRank: number | null;
   myPoints: number | null;
   benchmarks: LeaderboardBenchmark[];
+  // Same top-10%/#25 figure as FactionLeaderboardResult, shown for context - planet sort order
+  // is still driven by the Faction Leaderboard's referenceScore, not this one.
+  referenceScore: LeaderboardBenchmark | null;
 }
 
 export interface FactionLeaderboardResult {
@@ -91,6 +94,11 @@ export interface FactionLeaderboardResult {
   myRank: number | null;
   myPoints: number | null;
   benchmarks: LeaderboardBenchmark[];
+  // The top-10% rank/score if it's within the visible top-25 window, else the #25 rank/score - a
+  // representative "how competitive is this planet" figure used to sort the planet list (and
+  // displayed alongside benchmarks when its rank isn't already one of them). Null only when
+  // there's no leaderboard entry at all to compute it from.
+  referenceScore: LeaderboardBenchmark | null;
 }
 
 export interface PlanetLeaderboard {

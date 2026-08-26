@@ -163,11 +163,35 @@ export function mergeSideLeaderboard(
 ): SideLeaderboardResult | null {
   const mine = pickMine(forEntry, againstEntry);
   if (mine) {
-    return { numParticipants: mine.numParticipants, myRank: mine.myRank, myPoints: mine.myPoints, benchmarks: buildBenchmarks(mine) };
+    return {
+      numParticipants: mine.numParticipants,
+      myRank: mine.myRank,
+      myPoints: mine.myPoints,
+      benchmarks: buildBenchmarks(mine),
+      referenceScore: pickReferenceScore(mine),
+    };
   }
   const fallback = chosenSide.toLowerCase() === "for" ? forEntry : againstEntry;
   if (!fallback) return null;
-  return { numParticipants: fallback.numParticipants, myRank: null, myPoints: null, benchmarks: buildBenchmarks(fallback) };
+  return {
+    numParticipants: fallback.numParticipants,
+    myRank: null,
+    myPoints: null,
+    benchmarks: buildBenchmarks(fallback),
+    referenceScore: pickReferenceScore(fallback),
+  };
+}
+
+// A representative "how competitive is this planet" figure, used to sort the planet list: the
+// score at the top-10% rank if it's visible in topEntries (only the top 25 rows are ever
+// returned), else the deepest visible rank (#25) as a fallback. E.g. 130 participants -> rank 13
+// (ceil(130 * 0.1)), which is within the top-25 window, so that rank's score is used directly;
+// with, say, 1000 participants the top-10% rank (100) isn't visible at all, so #25 substitutes.
+export function pickReferenceScore(entry: RawLeaderboardEntry): LeaderboardBenchmark | null {
+  const top10Rank = Math.ceil(entry.numParticipants * 0.1);
+  const targetRank = Math.min(top10Rank, 25);
+  const points = entry.topEntries.find((e) => e.position === targetRank - 1)?.points;
+  return points === undefined ? null : { rank: targetRank, points };
 }
 
 // Unlike the side (_players) leaderboard, the per-faction leaderboard
@@ -179,7 +203,13 @@ export function mergeSideLeaderboard(
 // useful for judging a planet the player hasn't touched yet as one they have.
 export function buildFactionLeaderboard(entry: RawLeaderboardEntry | null): FactionLeaderboardResult | null {
   if (!entry) return null;
-  return { numParticipants: entry.numParticipants, myRank: entry.myRank, myPoints: entry.myPoints, benchmarks: buildBenchmarks(entry) };
+  return {
+    numParticipants: entry.numParticipants,
+    myRank: entry.myRank,
+    myPoints: entry.myPoints,
+    benchmarks: buildBenchmarks(entry),
+    referenceScore: pickReferenceScore(entry),
+  };
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
