@@ -299,147 +299,161 @@ export function App() {
       className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
     >
       <h1 className="cursor-pointer text-2xl font-semibold select-none" onClick={handleTitleTap}>
-        TacOps by cpunerd (Kharnage)
+        TacOps
       </h1>
-      <p>
-        {isTauri()
-          ? "Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board."
-          : "Enter your Tacticus user ID and client secret to fetch your live account data and show your current expeditions board. Nothing you enter here is stored - only your browser remembers it, if you let it."}
-      </p>
+      {!devModeEnabled ? (
+        // Taken down at the developer's own discretion, not a legal order - the code stays as-is
+        // and the tool itself is still fully reachable, just gated behind the same "tap the title
+        // 8 times" / press "8" trigger that already existed for dev-mode extras (see
+        // toggleDevMode/handleKeyDown/handleTitleTap above). Nothing removed, just hidden by
+        // default.
+        <p className="max-w-md">
+          TacOps has been taken down. I decided handling players' Tacticus login credentials
+          (client secrets) directly was too risky to keep distributing this tool publicly.
+        </p>
+      ) : (
+        <>
+          <p>
+            {isTauri()
+              ? "Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board."
+              : "Enter your Tacticus user ID and client secret to fetch your live account data and show your current expeditions board. Nothing you enter here is stored - only your browser remembers it, if you let it."}
+          </p>
 
-      {devModeEnabled && <EnvironmentToggle value={environment} onChange={setEnvironment} />}
-      {devModeEnabled && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
+          {devModeEnabled && <EnvironmentToggle value={environment} onChange={setEnvironment} />}
+          {devModeEnabled && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          go();
-        }}
-        className="flex flex-col items-center gap-2"
-      >
-        {!isTauri() && (
-          <>
-            <input
-              type="text"
-              name="userId"
-              autoComplete="username"
-              placeholder="User ID"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
-            />
-            <div className="relative w-64">
-              <input
-                type={showClientSecret ? "text" : "password"}
-                name="clientSecret"
-                autoComplete="current-password"
-                placeholder="Client secret"
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 pr-14 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
-              />
-              <button
-                type="button"
-                onClick={() => setShowClientSecret((v) => !v)}
-                className="absolute inset-y-0 right-0 px-3 text-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-              >
-                {showClientSecret ? "Hide" : "Show"}
-              </button>
-            </div>
-          </>
-        )}
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={fetchState === "loading"}
-            className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              go();
+            }}
+            className="flex flex-col items-center gap-2"
           >
-            GO
-          </button>
-          {devModeEnabled && (
-            <button
-              type="button"
-              disabled={rawPlayerData === null}
-              onClick={exportPlayerData}
-              className="rounded-lg border border-neutral-300 bg-transparent px-3 py-2 text-sm text-neutral-700 outline-none transition-colors hover:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:border-neutral-600 dark:text-neutral-300 dark:active:bg-neutral-900/40"
-            >
-              Export JSON
-            </button>
-          )}
-        </div>
-      </form>
-      {resources && <ResourceTokens resources={resources} adViewsRemaining={adViewsRemaining} />}
-      <p className="inline-flex items-center gap-2">
-        {fetchState === "loading" && <Spinner seconds={secondsRemaining} />}
-        {fetchState === "error" && <ErrorIcon />}
-        {status}
-      </p>
-
-      {devModeEnabled && <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />}
-
-      <div className="w-full overflow-x-auto pt-2">
-        {activeTab === "operations" && (
-          <>
-            {board.length > 0 && (
+            {!isTauri() && (
               <>
-                <RewardPriorityPicker value={priorityOrder} onChange={setPriorityOrder} />
-                {solverError && (
-                  <p className="mt-2 text-red-600 dark:text-red-400">
-                    Couldn't compute a suggested assignment: {solverError}
-                  </p>
-                )}
-                {solverIncompleteReason && (
-                  <p className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-700 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-                    {solverIncompleteReason}
-                  </p>
-                )}
-                <RequiredCharacterPool assignment={assignment} />
+                <input
+                  type="text"
+                  name="userId"
+                  autoComplete="username"
+                  placeholder="User ID"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
+                />
+                <div className="relative w-64">
+                  <input
+                    type={showClientSecret ? "text" : "password"}
+                    name="clientSecret"
+                    autoComplete="current-password"
+                    placeholder="Client secret"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 pr-14 text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900/60 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowClientSecret((v) => !v)}
+                    className="absolute inset-y-0 right-0 px-3 text-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                  >
+                    {showClientSecret ? "Hide" : "Show"}
+                  </button>
+                </div>
               </>
             )}
-            <div className="relative w-full">
-              {solverState === "solving" && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/70 dark:bg-neutral-900/70">
-                  <p className="font-medium">Solving</p>
-                  <Spinner size={64} seconds={solverSecondsRemaining} />
-                </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={fetchState === "loading"}
+                className="rounded-lg border border-transparent bg-white px-5 py-2.5 font-medium text-neutral-900 shadow-[0_2px_2px_rgba(0,0,0,0.2)] outline-none transition-colors hover:border-blue-500 active:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:bg-neutral-900/60 dark:text-white dark:active:bg-neutral-900/40"
+              >
+                GO
+              </button>
+              {devModeEnabled && (
+                <button
+                  type="button"
+                  disabled={rawPlayerData === null}
+                  onClick={exportPlayerData}
+                  className="rounded-lg border border-neutral-300 bg-transparent px-3 py-2 text-sm text-neutral-700 outline-none transition-colors hover:border-blue-500 active:bg-neutral-100 disabled:cursor-default disabled:opacity-60 dark:border-neutral-600 dark:text-neutral-300 dark:active:bg-neutral-900/40"
+                >
+                  Export JSON
+                </button>
               )}
-              <div className={solverState === "solving" ? "pointer-events-none" : ""}>
-                {viewMode === "table" ? (
-                  <OperationsTable
-                    board={board}
-                    environment={environment}
-                    assignment={assignment}
-                    solverReady={solverState === "success"}
-                    selectedExpeditionId={selectedExpeditionId}
-                    onSelect={toggleSelection}
-                  />
-                ) : (
-                  <OperationsCards
-                    board={board}
-                    environment={environment}
-                    assignment={assignment}
-                    solverReady={solverState === "success"}
-                    selectedExpeditionId={selectedExpeditionId}
-                    onSelect={toggleSelection}
-                  />
-                )}
-              </div>
             </div>
-          </>
-        )}
-        {activeTab === "characters" && <CharactersTable heroes={heroes} />}
-        {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
-        {activeTab === "coverage" && <BoardCoverageTab />}
-        {activeTab === "crusade" && (
-          <CrusadeTab
-            crusadeData={crusadeData}
-            planetLeaderboards={planetLeaderboards}
-            error={crusadeError}
-            loadingProgress={crusadeProgress}
-            viewMode={viewMode}
-          />
-        )}
-      </div>
+          </form>
+          {resources && <ResourceTokens resources={resources} adViewsRemaining={adViewsRemaining} />}
+          <p className="inline-flex items-center gap-2">
+            {fetchState === "loading" && <Spinner seconds={secondsRemaining} />}
+            {fetchState === "error" && <ErrorIcon />}
+            {status}
+          </p>
+
+          {devModeEnabled && <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />}
+
+          <div className="w-full overflow-x-auto pt-2">
+            {activeTab === "operations" && (
+              <>
+                {board.length > 0 && (
+                  <>
+                    <RewardPriorityPicker value={priorityOrder} onChange={setPriorityOrder} />
+                    {solverError && (
+                      <p className="mt-2 text-red-600 dark:text-red-400">
+                        Couldn't compute a suggested assignment: {solverError}
+                      </p>
+                    )}
+                    {solverIncompleteReason && (
+                      <p className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-700 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                        {solverIncompleteReason}
+                      </p>
+                    )}
+                    <RequiredCharacterPool assignment={assignment} />
+                  </>
+                )}
+                <div className="relative w-full">
+                  {solverState === "solving" && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/70 dark:bg-neutral-900/70">
+                      <p className="font-medium">Solving</p>
+                      <Spinner size={64} seconds={solverSecondsRemaining} />
+                    </div>
+                  )}
+                  <div className={solverState === "solving" ? "pointer-events-none" : ""}>
+                    {viewMode === "table" ? (
+                      <OperationsTable
+                        board={board}
+                        environment={environment}
+                        assignment={assignment}
+                        solverReady={solverState === "success"}
+                        selectedExpeditionId={selectedExpeditionId}
+                        onSelect={toggleSelection}
+                      />
+                    ) : (
+                      <OperationsCards
+                        board={board}
+                        environment={environment}
+                        assignment={assignment}
+                        solverReady={solverState === "success"}
+                        selectedExpeditionId={selectedExpeditionId}
+                        onSelect={toggleSelection}
+                      />
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+            {activeTab === "characters" && <CharactersTable heroes={heroes} />}
+            {activeTab === "mows" && <MowTable machinesOfWar={machinesOfWar} />}
+            {activeTab === "coverage" && <BoardCoverageTab />}
+            {activeTab === "crusade" && (
+              <CrusadeTab
+                crusadeData={crusadeData}
+                planetLeaderboards={planetLeaderboards}
+                error={crusadeError}
+                loadingProgress={crusadeProgress}
+                viewMode={viewMode}
+              />
+            )}
+          </div>
+        </>
+      )}
     </main>
   );
 }
