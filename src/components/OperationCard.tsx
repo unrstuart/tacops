@@ -54,24 +54,34 @@ export function OperationCard({
           })}
         </IconRow>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <RewardsCell rewards={entry.baseRewards ?? []} />
-        <RewardsCell rewards={entry.bonusRewards ?? []} />
-      </div>
-      {unavailable ? (
-        <DispatchedUnitsRow entry={entry} />
-      ) : (
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium opacity-70">Required</span>
-            <PortraitList ids={solution?.run ? solution.requiredCharacterIds : []} />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
+          {unavailable ? (
+            <DispatchedUnitsRow entry={entry} />
+          ) : (
+            <>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium opacity-70">Required</span>
+                <PortraitList ids={solution?.run ? solution.requiredCharacterIds : []} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium opacity-70">Optional</span>
+                <PortraitList ids={solution?.run ? solution.optionalCharacterIds : []} />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-medium opacity-70">Base Rewards</span>
+            <RewardsCell rewards={entry.baseRewards ?? []} />
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium opacity-70">Optional</span>
-            <PortraitList ids={solution?.run ? solution.optionalCharacterIds : []} />
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-medium opacity-70">Bonus Rewards</span>
+            <RewardsCell rewards={entry.bonusRewards ?? []} />
           </div>
         </div>
-      )}
+      </div>
     </OpsCardFrame>
   );
 }
