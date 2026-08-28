@@ -42,6 +42,8 @@ export function App() {
   const [selectedExpeditionId, setSelectedExpeditionId] = useState<string | null>(null);
   const [devModeEnabled, setDevModeEnabled] = useState(false);
   const lastEightPressRef = useRef(0);
+  const titleTapCountRef = useRef(0);
+  const lastTitleTapRef = useRef(0);
   const [userId, setUserId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [showClientSecret, setShowClientSecret] = useState(false);
@@ -126,6 +128,17 @@ export function App() {
     worker.postMessage(request);
   }, [board, heroes, priorityOrder]);
 
+  function toggleDevMode() {
+    setDevModeEnabled((current) => {
+      const next = !current;
+      if (!next) {
+        setViewMode("cards");
+        setActiveTab("operations");
+      }
+      return next;
+    });
+  }
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -136,18 +149,26 @@ export function App() {
       const now = Date.now();
       if (now - lastEightPressRef.current < 400) return;
       lastEightPressRef.current = now;
-      setDevModeEnabled((current) => {
-        const next = !current;
-        if (!next) {
-          setViewMode("cards");
-          setActiveTab("operations");
-        }
-        return next;
-      });
+      toggleDevMode();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Mobile has no "8" key, so tapping the title 8 times in a row (mirroring the desktop trigger's
+  // own number) does the same thing. Each tap must follow the last within TITLE_TAP_WINDOW_MS or
+  // the count resets to 1 - otherwise idle taps spread across a session would eventually add up
+  // to 8 by accident.
+  function handleTitleTap() {
+    const now = Date.now();
+    const TITLE_TAP_WINDOW_MS = 600;
+    titleTapCountRef.current = now - lastTitleTapRef.current > TITLE_TAP_WINDOW_MS ? 1 : titleTapCountRef.current + 1;
+    lastTitleTapRef.current = now;
+    if (titleTapCountRef.current >= 8) {
+      titleTapCountRef.current = 0;
+      toggleDevMode();
+    }
+  }
 
   // Purely a visual "roughly how long this could take" indicator - actual enforcement is via the
   // RPC timeouts in fetchPlayerData, not this countdown.
@@ -277,7 +298,9 @@ export function App() {
       onClick={() => setSelectedExpeditionId(null)}
       className="mx-auto flex min-h-screen w-full flex-col items-center bg-neutral-100 px-4 py-[5vh] text-center text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
     >
-      <h1 className="text-2xl font-semibold">TacOps by cpunerd (Kharnage)</h1>
+      <h1 className="cursor-pointer text-2xl font-semibold select-none" onClick={handleTitleTap}>
+        TacOps by cpunerd (Kharnage)
+      </h1>
       <p>
         {isTauri()
           ? "Reads your local Tacticus credentials, fetches your live account data, and shows your current expeditions board."
