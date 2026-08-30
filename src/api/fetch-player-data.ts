@@ -3,6 +3,7 @@ import { invokeWithTimeout } from "./invoke-with-timeout";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import characterData from "../assets/character-data.json";
 import mowData from "../assets/mow-data.json";
+import { calculateBundledCharacterPowers } from "../characters/character-power";
 import {
   computeGuildBossBombTimings,
   computeGuildBossTimings,
@@ -61,6 +62,20 @@ export async function fetchPlayerData(
     id,
     ...(data as object),
   }));
+
+  // All-or-nothing: a single missing/stale unit definition (e.g. a character added since the
+  // bundled GameConfig extraction) throws for the whole batch rather than returning some units
+  // with power and others without, so a mixed-confidence power state never reaches the solver.
+  try {
+    const powers = calculateBundledCharacterPowers(response);
+    const powerByUnitId = new Map(powers.map((p) => [p.unitId, p.power]));
+    for (const unit of units) {
+      const power = powerByUnitId.get(unit.id);
+      if (power !== undefined) unit.power = power;
+    }
+  } catch (error) {
+    console.error("Failed to calculate character power - leaving power unset for this fetch", error);
+  }
 
   const powerLevel = hero?.player?.powerLevel;
   const staminaTimings = computeStaminaTimings(hero?.stamina, powerLevel);

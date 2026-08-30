@@ -7,7 +7,7 @@ import { DispatchedUnitsRow } from "./DispatchedUnitsRow";
 import { OpsCardFrame } from "./OpsCardFrame";
 import { getObjectiveDisplay, entryIsUnavailable, entryStatusLabel } from "../board/board-view-model";
 import { getEntryFulfillment } from "../board/entry-fulfillment";
-import type { Environment, ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry, RawUnit } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 export function OperationCard({
@@ -17,6 +17,7 @@ export function OperationCard({
   solverReady,
   selectedExpeditionId,
   onSelect,
+  heroes,
 }: {
   entry: ExpeditionBoardEntry;
   environment: Environment;
@@ -24,6 +25,7 @@ export function OperationCard({
   solverReady: boolean;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
+  heroes: RawUnit[];
 }) {
   const unavailable = entryIsUnavailable(entry);
   const solution = assignment.get(entry.expeditionId);
@@ -57,7 +59,7 @@ export function OperationCard({
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-2">
           {unavailable ? (
-            <DispatchedUnitsRow entry={entry} />
+            <DispatchedUnitsRow entry={entry} heroes={heroes} />
           ) : (
             <>
               <div className="flex flex-col gap-1">

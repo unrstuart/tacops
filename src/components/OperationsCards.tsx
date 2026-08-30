@@ -1,6 +1,6 @@
 import { OperationCard } from "./OperationCard";
 import { sortByRarityDescending } from "../board/board-view-model";
-import type { Environment, ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry, RawUnit } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 export function OperationsCards({
@@ -10,6 +10,7 @@ export function OperationsCards({
   solverReady,
   selectedExpeditionId,
   onSelect,
+  heroes,
 }: {
   board: ExpeditionBoardEntry[];
   environment: Environment;
@@ -17,6 +18,7 @@ export function OperationsCards({
   solverReady: boolean;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
+  heroes: RawUnit[];
 }) {
   if (board.length === 0) {
     return <p>No expeditions on the board right now.</p>;
@@ -35,6 +37,7 @@ export function OperationsCards({
           solverReady={solverReady}
           selectedExpeditionId={selectedExpeditionId}
           onSelect={onSelect}
+          heroes={heroes}
         />
       ))}
     </div>
