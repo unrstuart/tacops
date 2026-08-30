@@ -405,7 +405,7 @@ export function App() {
                         {solverIncompleteReason}
                       </p>
                     )}
-                    <RequiredCharacterPool assignment={assignment} />
+                    <RequiredCharacterPool assignment={assignment} heroes={heroes} />
                   </>
                 )}
                 <div className="relative w-full">
@@ -424,6 +424,7 @@ export function App() {
                         solverReady={solverState === "success"}
                         selectedExpeditionId={selectedExpeditionId}
                         onSelect={toggleSelection}
+                        heroes={heroes}
                       />
                     ) : (
                       <OperationsCards
@@ -433,6 +434,7 @@ export function App() {
                         solverReady={solverState === "success"}
                         selectedExpeditionId={selectedExpeditionId}
                         onSelect={toggleSelection}
+                        heroes={heroes}
                       />
                     )}
                   </div>

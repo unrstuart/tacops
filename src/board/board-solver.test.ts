@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { findMinimalRequiredSubset, solveGreedyFallback, type GroupRequirement, type RosterCharacter } from "./board-solver";
+import {
+  findMinimalRequiredSubset,
+  solveBoardAssignment,
+  solveGreedyFallback,
+  type GroupRequirement,
+  type RosterCharacter,
+} from "./board-solver";
 import { Rank } from "../rank/rank.enum";
 import { Rarity } from "../rarity/rarity.enum";
 import type { CharacterProfile } from "../characters/character-profile";
-import type { ExpeditionBoardEntry } from "../api/types";
+import type { ExpeditionBoardEntry, RawUnit } from "../api/types";
 
 describe("findMinimalRequiredSubset", () => {
   it("excludes a character whose only objective is already covered by someone else", () => {
@@ -65,6 +71,7 @@ function character(id: string, overrides: Partial<RosterCharacter> = {}): Roster
     rank: Rank.Gold1,
     rarity: Rarity.Epic,
     xpLevel: 0,
+    power: null,
     profile: profile(),
     ...overrides,
   };
@@ -179,5 +186,64 @@ describe("solveGreedyFallback", () => {
     const solution = result.get("exp")!;
     expect(solution.requiredCharacterIds).toEqual(["solver"]);
     expect(solution.optionalCharacterIds).toEqual(["filler"]);
+  });
+
+  it("fills with the higher-power character over a higher-rank one, once both are uncapped", () => {
+    const highRankLowPower = character("highRankLowPower", { rank: Rank.Adamantine2, power: 100 });
+    const lowRankHighPower = character("lowRankHighPower", { rank: Rank.Iron1, power: 9999 });
+    const unsolvableBoard = board({ bonusObjectives: [{ objectiveType: "Faction", objectiveTarget: "Necrons" }] });
+
+    const result = solveGreedyFallback([unsolvableBoard], [highRankLowPower, lowRankHighPower]);
+
+    expect(result.get("exp")!.optionalCharacterIds).toEqual(["lowRankHighPower"]);
+  });
+
+  it("displays optionalCharacterIds sorted by power descending, even when fill preference picked them in the opposite order", () => {
+    // fillComparator would place uncappedLow before cappedHigh (uncapped-first tiebreak), but the
+    // DISPLAYED order should be a plain power sort, independent of why each character got picked.
+    const cappedHigh = character("cappedHigh", { rarity: Rarity.Mythic, xpLevel: 60, power: 9999 });
+    const uncappedLow = character("uncappedLow", { rarity: Rarity.Common, xpLevel: 0, power: 1 });
+    const twoSlotBoard = board({ participants: 2 });
+
+    const result = solveGreedyFallback([twoSlotBoard], [cappedHigh, uncappedLow]);
+
+    expect(result.get("exp")!.optionalCharacterIds).toEqual(["cappedHigh", "uncappedLow"]);
+  });
+});
+
+describe("solveBoardAssignment", () => {
+  it("prefers assigning the higher-power character when the LP has no other signal to break the tie", () => {
+    // A single Common-rarity slot with no bonus objectives and no bonus rewards: every priority
+    // tier, xpGain, and runCount all tie between the two candidates, leaving the final powerUsed
+    // pass as the only thing that can decide which one gets the slot.
+    const weakHero: RawUnit = { id: "ultraTigurius", power: 100 };
+    const strongHero: RawUnit = { id: "ultraEliminatorSgt", power: 9999 };
+    const openBoard = board({ rarity: "Common", category: "all_vanguard" });
+
+    const { assignment, status } = solveBoardAssignment(
+      [openBoard],
+      [weakHero, strongHero],
+      ["rarity", "intel", "crusadeBomb", "crusadeNpc"],
+    );
+
+    expect(status).toBe("ok");
+    const solution = assignment.get("exp")!;
+    expect(solution.run).toBe(true);
+    expect(solution.optionalCharacterIds).toEqual(["ultraEliminatorSgt"]);
+  });
+
+  it("orders a board's optionalCharacterIds by power descending", () => {
+    const low: RawUnit = { id: "ultraTigurius", power: 50 };
+    const mid: RawUnit = { id: "ultraEliminatorSgt", power: 500 };
+    const high: RawUnit = { id: "ultraInceptorSgt", power: 5000 };
+    const openBoard = board({ rarity: "Common", category: "all_vanguard", participants: 2 });
+
+    const { assignment } = solveBoardAssignment(
+      [openBoard],
+      [low, mid, high],
+      ["rarity", "intel", "crusadeBomb", "crusadeNpc"],
+    );
+
+    expect(assignment.get("exp")!.optionalCharacterIds).toEqual(["ultraInceptorSgt", "ultraEliminatorSgt"]);
   });
 });

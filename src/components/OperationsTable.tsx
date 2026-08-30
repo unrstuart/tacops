@@ -15,7 +15,7 @@ import {
 import { getEntryFulfillment, type EntryFulfillment } from "../board/entry-fulfillment";
 import { operationName } from "../board/operation-name";
 import { deployIconUrl } from "../board/deploy-icon";
-import type { Environment, ExpeditionBoardEntry } from "../api/types";
+import type { Environment, ExpeditionBoardEntry, RawUnit } from "../api/types";
 import type { BoardAssignmentResult } from "../board/board-solver";
 
 const cellClass = "border-b border-black/10 px-3 py-2 align-top dark:border-white/15";
@@ -38,6 +38,7 @@ export function OperationsTable({
   solverReady,
   selectedExpeditionId,
   onSelect,
+  heroes,
 }: {
   board: ExpeditionBoardEntry[];
   environment: Environment;
@@ -45,6 +46,7 @@ export function OperationsTable({
   solverReady: boolean;
   selectedExpeditionId: string | null;
   onSelect: (expeditionId: string) => void;
+  heroes: RawUnit[];
 }) {
   if (board.length === 0) {
     return <p>No expeditions on the board right now.</p>;
@@ -127,7 +129,7 @@ export function OperationsTable({
               <td className={cellClass}>
                 {!unavailable && <PortraitList ids={solution?.run ? solution.optionalCharacterIds : []} />}
               </td>
-              <td className={cellClass}>{unavailable && <DispatchedUnitsRow entry={entry} />}</td>
+              <td className={cellClass}>{unavailable && <DispatchedUnitsRow entry={entry} heroes={heroes} />}</td>
             </tr>
           );
         })}

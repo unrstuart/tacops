@@ -31,6 +31,7 @@ export type RawUnit = {
   rank?: number;
   progressionIndex?: number;
   xpLevel?: number;
+  power?: number;
 } & Record<string, unknown>;
 
 export interface CrusadePhase {

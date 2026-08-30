@@ -1,12 +1,11 @@
 import solver, { type Model as LpModel, type SolveResult } from "javascript-lp-solver";
-import { BoardFilter, boardMinRank, type RankedUnit } from "./board-filter";
+import { BoardFilter, type RankedUnit } from "./board-filter";
 import { characterSatisfiesObjective } from "./objective-eligibility";
 import { rewardAmount, type PriorityKey } from "./reward-amount";
 import { estimateXpGain, isXpCapped } from "./xp-gain";
 import { requiredAlliance } from "./board-alliance";
 import { entryRarity, entryIsUnavailable } from "./board-view-model";
 import { intToRank } from "../rank/rank.mapper";
-import { Rank } from "../rank/rank.enum";
 import type { Rarity } from "../rarity/rarity.enum";
 import { ProgressionIndexMapper } from "../progression/progression-index";
 import { getCharacterProfile, type CharacterProfile } from "../characters/character-profile";
@@ -16,6 +15,7 @@ import type { BonusObjective, ExpeditionBoardEntry, RawUnit } from "../api/types
 export interface RosterCharacter extends RankedUnit {
   id: string;
   xpLevel: number;
+  power: number | null;
   profile: CharacterProfile;
 }
 
@@ -50,6 +50,7 @@ function buildRoster(heroes: RawUnit[], excludedIds: Set<string>): RosterCharact
       rank: intToRank(hero.rank),
       rarity: ProgressionIndexMapper.toRarity(hero.progressionIndex),
       xpLevel: hero.xpLevel ?? 0,
+      power: hero.power ?? null,
       profile: getCharacterProfile(hero.id),
     }));
 }
@@ -60,11 +61,6 @@ function isEligibleForBoard(unit: RosterCharacter, boardRarity: Rarity, alliance
     BoardFilter.byRarity([unit], boardRarity).length > 0 &&
     (allianceRequirement === undefined || unit.profile.alliance === allianceRequirement)
   );
-}
-
-function overkillCost(unit: RankedUnit, boardRarity: Rarity): number {
-  const minRank = boardMinRank(boardRarity) ?? Rank.Locked;
-  return unit.rank - minRank;
 }
 
 export interface ObjectiveGroup {
@@ -88,7 +84,7 @@ export function groupObjectives(objectives: BonusObjective[]): ObjectiveGroup[] 
 }
 
 type PriorityPassKey = `priority${number}`;
-type PassKey = PriorityPassKey | "xpGain" | "runCount" | "overkill";
+type PassKey = PriorityPassKey | "xpGain" | "runCount" | "powerUsed";
 
 const PRIORITY_TIER_COUNT = 4;
 
@@ -98,12 +94,14 @@ function priorityPassKey(tierIndex: number): PriorityPassKey {
 
 // The first N passes are the user's priority tiers (lexicographic - each pass's achieved value
 // gets locked in via an `equal` constraint before the next pass runs, see runPasses), followed by
-// the fixed xpGain/runCount/overkill tail that always applies regardless of priority order.
+// the fixed xpGain/runCount/powerUsed tail that always applies regardless of priority order.
+// powerUsed runs last (after run/slot decisions are already locked in) purely as a tiebreaker:
+// among assignments that are otherwise equally good, prefer using the highest-power characters.
 const PASS_ORDER: Array<{ key: PassKey; opType: "max" | "min" }> = [
   ...Array.from({ length: PRIORITY_TIER_COUNT }, (_, i) => ({ key: priorityPassKey(i), opType: "max" as const })),
   { key: "xpGain", opType: "max" },
   { key: "runCount", opType: "max" },
-  { key: "overkill", opType: "min" },
+  { key: "powerUsed", opType: "max" },
 ];
 
 interface AssignRef {
@@ -183,7 +181,7 @@ function buildModel(
       binaries[assignVar] = 1;
       addCoef(assignVar, slotConstraint, 1);
       addCoef(assignVar, `excl::${unit.id}`, 1);
-      addCoef(assignVar, "overkill", overkillCost(unit, rarity));
+      addCoef(assignVar, "powerUsed", unit.power ?? 0);
       addCoef(assignVar, "xpGain", estimateXpGain(unit.rarity, unit.xpLevel));
       assignRefs.push({ varName: assignVar, characterId: unit.id, boardId });
       usedCharacterIds.add(unit.id);
@@ -321,13 +319,27 @@ export function findMinimalRequiredSubset(assignedIds: string[], groupRequiremen
 
 // Shared "who to prefer when there's no objective-coverage signal to go on" ordering: uncapped
 // units first (deploying an XP-capped unit wastes a growth opportunity when an uncapped
-// alternative exists - mirrors the LP's own xpGain optimization pass), then by Rank descending.
-// Negative return means `a` is preferred over `b`, matching Array.prototype.sort's contract.
-function rankFillComparator(a: RosterCharacter, b: RosterCharacter): number {
+// alternative exists - mirrors the LP's own xpGain optimization pass), then by power descending
+// (falling back to last-place, not 0, when power is unknown - an uncomputed power shouldn't look
+// weaker than a genuinely low-power character). Negative return means `a` is preferred over `b`,
+// matching Array.prototype.sort's contract.
+function fillComparator(a: RosterCharacter, b: RosterCharacter): number {
   const aCapped = isXpCapped(a.rarity, a.xpLevel) ? 1 : 0;
   const bCapped = isXpCapped(b.rarity, b.xpLevel) ? 1 : 0;
   if (aCapped !== bCapped) return aCapped - bCapped;
-  return b.rank - a.rank;
+  return (b.power ?? -Infinity) - (a.power ?? -Infinity);
+}
+
+// Display order for a board's required/optional character lists (and the cross-board required
+// pool) - always power descending, independent of whatever order the solver happened to assign or
+// select them in. Unknown power (computation failed this fetch) sorts last, same convention as
+// fillComparator.
+function sortIdsByPower(ids: Iterable<string>, powerById: Map<string, number | null>): string[] {
+  return [...ids].sort((a, b) => (powerById.get(b) ?? -Infinity) - (powerById.get(a) ?? -Infinity));
+}
+
+function buildPowerById(roster: RosterCharacter[]): Map<string, number | null> {
+  return new Map(roster.map((unit) => [unit.id, unit.power]));
 }
 
 // Fallback for when runPasses() can't produce any usable LP result at all (see
@@ -340,6 +352,7 @@ function rankFillComparator(a: RosterCharacter, b: RosterCharacter): number {
 // clearly rather than presenting it as an equivalent result.
 export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: RosterCharacter[]): BoardAssignmentResult {
   const available = new Set(roster.map((unit) => unit.id));
+  const powerById = buildPowerById(roster);
   const sortedBoards = [...openBoards].sort((a, b) => entryRarity(b) - entryRarity(a));
   const solutions: BoardAssignmentResult = new Map();
   const unableBoards: ExpeditionBoardEntry[] = [];
@@ -354,7 +367,7 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
     const chosenIds = new Set(chosen.map((u) => u.id));
     const padding = pool
       .filter((u) => !chosenIds.has(u.id))
-      .sort(rankFillComparator)
+      .sort(fillComparator)
       .slice(0, Math.max(0, slots - chosen.length));
     return [...chosen, ...padding];
   }
@@ -376,7 +389,7 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
           0,
         );
         if (score === 0) continue;
-        if (!best || score > bestScore || (score === bestScore && rankFillComparator(unit, best) < 0)) {
+        if (!best || score > bestScore || (score === bestScore && fillComparator(unit, best) < 0)) {
           best = unit;
           bestScore = score;
         }
@@ -409,8 +422,11 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
           expeditionId: board.expeditionId,
           run: true,
           bonusCompleted: true,
-          requiredCharacterIds: [...required],
-          optionalCharacterIds: filled.map((u) => u.id).filter((id) => !required.has(id)),
+          requiredCharacterIds: sortIdsByPower(required, powerById),
+          optionalCharacterIds: sortIdsByPower(
+            filled.map((u) => u.id).filter((id) => !required.has(id)),
+            powerById,
+          ),
         });
         continue;
       }
@@ -423,7 +439,7 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
   // Phase B: rank-based fill for anything Phase A couldn't fully solve, still mythic-first.
   for (const board of unableBoards) {
     const eligible = eligibleAvailableRoster(board);
-    const chosen = [...eligible].sort(rankFillComparator).slice(0, board.participants);
+    const chosen = [...eligible].sort(fillComparator).slice(0, board.participants);
     if (chosen.length === board.participants) {
       for (const unit of chosen) available.delete(unit.id);
       solutions.set(board.expeditionId, {
@@ -431,7 +447,10 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
         run: true,
         bonusCompleted: false,
         requiredCharacterIds: [],
-        optionalCharacterIds: chosen.map((u) => u.id),
+        optionalCharacterIds: sortIdsByPower(
+          chosen.map((u) => u.id),
+          powerById,
+        ),
       });
     } else {
       solutions.set(board.expeditionId, {
@@ -447,8 +466,14 @@ export function solveGreedyFallback(openBoards: ExpeditionBoardEntry[], roster: 
   return solutions;
 }
 
-function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: string[]): BoardAssignmentResult {
+function extractSolution(
+  built: BuiltModel,
+  result: SolveResult,
+  openBoardIds: string[],
+  roster: RosterCharacter[],
+): BoardAssignmentResult {
   const isOne = (name: string) => Math.round(Number(result[name] ?? 0)) === 1;
+  const powerById = buildPowerById(roster);
 
   const assignedByBoard = new Map<string, Set<string>>();
   for (const ref of built.assignRefs) {
@@ -491,8 +516,8 @@ function extractSolution(built: BuiltModel, result: SolveResult, openBoardIds: s
       expeditionId: boardId,
       run,
       bonusCompleted,
-      requiredCharacterIds: [...required],
-      optionalCharacterIds: optional,
+      requiredCharacterIds: sortIdsByPower(required, powerById),
+      optionalCharacterIds: sortIdsByPower(optional, powerById),
     });
   }
   return solutions;
@@ -541,6 +566,7 @@ export function solveBoardAssignment(
       built,
       passesResult.result,
       openBoards.map((entry) => entry.expeditionId),
+      roster,
     );
   }
 
