@@ -57,6 +57,18 @@ const ARC_OUTLINE_COLOR: Record<"imperial" | "devastation", string> = {
   devastation: "#7f1d1d",
 };
 
+const SIDE_NAME: Record<"imperial" | "devastation", string> = {
+  imperial: "Imperial",
+  devastation: "Devastation",
+};
+// Thicker than a contested planet's ring, so a decided planet's side reads at a glance.
+const WINNER_RING_STROKE_WIDTH = 0.9;
+
+// The side that owns a planet, or null while nobody does.
+function decidedOwner(color: SectorMapColor): "imperial" | "devastation" | null {
+  return color === "neutral" ? null : color;
+}
+
 // A small inset so planets sitting right at a sector's edge (normalized 0 or 1) don't get their
 // circle, the progress bars above it, or the name below it clipped by the viewBox.
 const MARGIN = 14;
@@ -215,11 +227,19 @@ export function SectorSvg({
         // flips it: highest points -> heat 1 (hottest), lowest/tied/all-zero -> heat 0 (dullest).
         // Only meaningful (and only computed) in showPointValues mode - STRUGGLE's ring color
         // never uses it.
+        // Decided planets (see decidedOwner) show their winner's color instead, so they're left
+        // out of the ranking - heat only compares planets that are still being fought over.
         const heatScaleById = showPointValues
           ? new Map(
-              [...computeDotScales(new Map(sectorMapData.nodes.map((n) => [n.planetId, Math.max(n.pointsFor, n.pointsAgainst)])))].map(
-                ([planetId, scale]) => [planetId, 1 - scale],
-              ),
+              [
+                ...computeDotScales(
+                  new Map(
+                    sectorMapData.nodes
+                      .filter((n) => decidedOwner(n.color) === null)
+                      .map((n) => [n.planetId, Math.max(n.pointsFor, n.pointsAgainst)]),
+                  ),
+                ),
+              ].map(([planetId, scale]) => [planetId, 1 - scale]),
             )
           : null;
         return sectorMapData.nodes.map((node) => {
@@ -228,14 +248,21 @@ export function SectorSvg({
           // CRUSADE/Downtime (showPointValues) has no real capture-threshold data to show progress
           // toward - crusadeProgressBars instead scales relative to whichever side currently leads
           // (see its own comment). STRUGGLE keeps the existing threshold-based bars unchanged.
-          const bars = showPointValues ? crusadeProgressBars(node.pointsFor, node.pointsAgainst) : planetProgressBars(node.progress);
+          // During CRUSADE (Expansion), a planet only gets an owner once its sector is complete - it
+          // then shows a single ring in the winner's color, with no heat color or two-side arcs.
+          const winner = showPointValues ? decidedOwner(node.color) : null;
+          const bars = winner
+            ? null
+            : showPointValues
+              ? crusadeProgressBars(node.pointsFor, node.pointsAgainst)
+              : planetProgressBars(node.progress);
           const arcRadius = dotRadius(node.dotScale) + ARC_GAP;
-          const ringColor = showPointValues ? heatColor(heatScaleById!.get(node.planetId) ?? 0) : NODE_COLOR[node.color];
+          const ringColor = showPointValues && !winner ? heatColor(heatScaleById!.get(node.planetId) ?? 0) : NODE_COLOR[node.color];
           return (
             <g key={node.planetId}>
               {node.planetId === highlightPlanetId && <circle cx={cx} cy={cy} r={4} fill="none" stroke={HIGHLIGHT_COLOR} strokeWidth={0.7} />}
               {showPointValues ? (
-                <circle cx={cx} cy={cy} r={dotRadius(node.dotScale)} fill="none" stroke={ringColor} strokeWidth={0.6} />
+                <circle cx={cx} cy={cy} r={dotRadius(node.dotScale)} fill="none" stroke={ringColor} strokeWidth={winner ? WINNER_RING_STROKE_WIDTH : 0.6} />
               ) : (
                 <circle cx={cx} cy={cy} r={dotRadius(node.dotScale)} fill={ringColor} />
               )}
@@ -256,7 +283,11 @@ export function SectorSvg({
               {/* Dots can shrink to ~1px, far too small to hover - this invisible full-size target
                   keeps the name tooltip reachable. */}
               <circle cx={cx} cy={cy} r={MAX_DOT_RADIUS} fill="transparent">
-                <title>{node.name}</title>
+                <title>
+                  {winner
+                    ? `${node.name} - won by ${SIDE_NAME[winner]} (Imperial ${node.pointsFor.toLocaleString()}, Devastation ${node.pointsAgainst.toLocaleString()})`
+                    : node.name}
+                </title>
               </circle>
               {bars && showPointValues && (
                 <>
